@@ -214,6 +214,7 @@ export const VisitorMap: React.FC = () => {
           </Geographies>
           {clusters.map((cluster, i) => {
             const isNewVisit = cluster.lastVisitTime !== undefined;
+            const circleKey = `${i}-${cluster.lastVisitTime || ''}-${cluster.latitude}-${cluster.longitude}`;
             return (
               <Marker
                 key={`cluster-${i}`}
@@ -228,6 +229,7 @@ export const VisitorMap: React.FC = () => {
                 }}
               >
                 <circle
+                  key={circleKey}
                   r={getMarkerSize(cluster.totalVisits, zoom)}
                   className={isNewVisit ? 'animate-visit' : ''}
                   style={{

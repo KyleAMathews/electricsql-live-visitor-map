@@ -4,28 +4,10 @@
     fill: #F1C40F;
     stroke: #F1C40F;
   }
-  20% {
-    transform: scale(1.5);
-    fill: #ff6b6b;
-    stroke: #ff6b6b;
-  }
-  100% {
-    transform: scale(1);
-    fill: #F1C40F;
-    stroke: #F1C40F;
-  }
-}
-
-@keyframes visit-pulse {
-  0% {
-    transform: scale(1);
-    fill: #ff6b6b;
-    stroke: #ff6b6b;
-  }
   50% {
     transform: scale(1.5);
-    fill: #ffd93d;
-    stroke: #ffd93d;
+    fill: #ff6b6b;
+    stroke: #ff6b6b;
   }
   100% {
     transform: scale(1);
@@ -35,5 +17,5 @@
 }
 
 .animate-visit {
-  animation: visit-pulse 5s ease-out forwards;
+  animation: visitPulse 5s ease-out forwards;
 }
