@@ -1,10 +1,10 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import { sql } from '../src/lib/db';
-import { v4 as uuidv4 } from 'uuid';
-import { z } from 'zod';
-import fetch, { Headers } from 'node-fetch';
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import { sql } from "../src/lib/db";
+import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
+import fetch, { Headers, Response } from "node-fetch-native";
 
 const app = express();
 app.use(cors());
@@ -19,15 +19,15 @@ const visitSchema = z.object({
 });
 
 // Shape API endpoint
-app.get('/api/visitors/shape', async (req, res) => {
+app.get("/api/visitors/shape", async (req, res) => {
   try {
     const originUrl = new URL(
       process.env.PRIVATE_ELECTRIC_URL
         ? `${process.env.PRIVATE_ELECTRIC_URL}/v1/shape`
-        : `http://localhost:5133/v1/shape`
+        : `http://localhost:5133/v1/shape`,
     );
 
-    originUrl.searchParams.set('table', 'visitors');
+    originUrl.searchParams.set("table", "visitors");
 
     // Copy all search parameters from the original request
     for (const [key, value] of Object.entries(req.query)) {
@@ -35,44 +35,48 @@ app.get('/api/visitors/shape', async (req, res) => {
     }
 
     if (process.env.PRIVATE_DATABASE_ID) {
-      originUrl.searchParams.set('database_id', process.env.PRIVATE_DATABASE_ID);
+      originUrl.searchParams.set(
+        "database_id",
+        process.env.PRIVATE_DATABASE_ID,
+      );
     }
 
     // Forward the request to Electric
     const headers = new Headers(req.headers as any);
-    headers.delete('host');
+    headers.delete("host");
 
     if (process.env.PRIVATE_ELECTRIC_TOKEN) {
-      originUrl.searchParams.set('token', process.env.PRIVATE_ELECTRIC_TOKEN);
+      originUrl.searchParams.set("token", process.env.PRIVATE_ELECTRIC_TOKEN);
     }
 
-    console.log(originUrl.toString())
-    const response = await fetch(originUrl.toString(), { headers });
-    
-    // Copy status and headers from Electric response
-    res.status(response.status);
-    response.headers.forEach((value, key) => {
-      res.setHeader(key, value);
-    });
+    let response = await fetch(originUrl.toString(), { headers });
 
-    // Send the response body
-    const body = await response.text();
-    res.send(body);
+    // Copy all headers
+    for (const [key, value] of response.headers.entries()) {
+      res.setHeader(key, value);
+    }
+
+    // Set the status
+    res.status(response.status);
+
+    // Get the raw buffer and send it
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error('Error proxying to Electric:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error proxying to Electric:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Record visit endpoint
-app.post('/api/record-visit', async (req, res) => {
+app.post("/api/record-visit", async (req, res) => {
   try {
     const result = visitSchema.safeParse(req.body);
-    
+
     if (!result.success) {
-      return res.status(400).json({ 
-        error: 'Invalid data', 
-        details: result.error.issues 
+      return res.status(400).json({
+        error: "Invalid data",
+        details: result.error.issues,
       });
     }
 
@@ -85,8 +89,8 @@ app.post('/api/record-visit', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Error recording visit:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error recording visit:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
