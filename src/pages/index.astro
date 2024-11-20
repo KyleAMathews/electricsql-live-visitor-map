@@ -1,0 +1,19 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { VisitorMap } from '../components/VisitorMap';
+---
+
+<Layout title="Live Visitor Map">
+  <main>
+    <VisitorMap client:load />
+  </main>
+</Layout>
+
+<style>
+  main {
+    width: 100%;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+  }
+</style>

@@ -1,0 +1,21 @@
+@keyframes visitPulse {
+  0% {
+    transform: scale(1);
+    fill: #F1C40F;
+    stroke: #F1C40F;
+  }
+  20% {
+    transform: scale(1.5);
+    fill: #ff6b6b;
+    stroke: #ff6b6b;
+  }
+  100% {
+    transform: scale(1);
+    fill: #F1C40F;
+    stroke: #F1C40F;
+  }
+}
+
+.animate-visit {
+  animation: visitPulse 5s ease-out;
+}
