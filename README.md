@@ -1,54 +1,82 @@
-# Astro Starter Kit: Basics
+# Visitor Map
 
-```sh
-npm create astro@latest -- --template basics
+A real-time visitor tracking and visualization application built with Astro, React, and SST. The application displays visitor locations on an interactive world map, with features for clustering and zooming.
+
+## 🌟 Features
+
+- Real-time visitor tracking and visualization
+- Interactive world map using react-simple-maps
+- Automatic visitor clustering based on zoom level
+- Responsive design with Tailwind CSS
+- Serverless infrastructure using SST and AWS
+- PostgreSQL database for visitor data storage
+
+## 🛠️ Tech Stack
+
+- **Framework:** Astro + React
+- **Styling:** Tailwind CSS
+- **Maps:** react-simple-maps
+- **Database:** PostgreSQL with ElectricSQL
+- **Infrastructure:** SST (Serverless Stack) on AWS
+- **Language:** TypeScript
+
+## 🚀 Getting Started
+
+1. **Install dependencies**
+   ```sh
+   npm install
+   ```
+
+2. **Initialize the database**
+   ```sh
+   npm run init-db
+   ```
+
+3. **Optional: Insert test data**
+   ```sh
+   npm run insert-fake-data
+   ```
+
+4. **Start the development server**
+   ```sh
+   npm run dev
+   ```
+
+## 📋 Available Scripts
+
+| Command              | Description                                    |
+| :------------------- | :--------------------------------------------- |
+| `npm run dev`        | Start development server                       |
+| `npm run build`      | Build for production                          |
+| `npm run preview`    | Preview production build                      |
+| `npm run init-db`    | Initialize the database                       |
+| `npm run server`     | Start the backend server                      |
+| `npm run insert-fake-data` | Insert sample visitor data              |
+
+## 🏗️ Project Structure
+
 ```
-
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/withastro/astro/tree/latest/examples/basics)
-[![Open with CodeSandbox](https://assets.codesandbox.io/github/button-edit-lime.svg)](https://codesandbox.io/p/sandbox/github/withastro/astro/tree/latest/examples/basics)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/withastro/astro?devcontainer_path=.devcontainer/basics/devcontainer.json)
-
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-![just-the-basics](https://github.com/withastro/astro/assets/2244813/a0a5533c-a856-4198-8470-2d67b1d7c554)
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
 /
-├── public/
-│   └── favicon.svg
 ├── src/
-│   ├── components/
-│   │   └── Card.astro
-│   ├── layouts/
-│   │   └── Layout.astro
-│   └── pages/
-│       └── index.astro
-└── package.json
+│   ├── components/     # React and Astro components
+│   │   └── VisitorMap.tsx  # Main map visualization component
+│   ├── pages/         # Astro pages
+│   └── styles/        # CSS styles
+├── server/           # Backend server code
+├── scripts/         # Database and utility scripts
+└── sst.config.ts    # SST infrastructure configuration
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## 💡 Development Notes
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+- The map component uses dynamic clustering based on zoom level for better performance with large datasets
+- Visitor data is updated in real-time using ElectricSQL
+- The application is deployed using SST's serverless infrastructure
 
-Any static assets, like images, can be placed in the `public/` directory.
+## 🔧 Configuration
 
-## 🧞 Commands
+The application can be configured through environment variables and the SST configuration file (`sst.config.ts`).
 
-All commands are run from the root of the project, from a terminal:
+## 📝 License
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+MIT
