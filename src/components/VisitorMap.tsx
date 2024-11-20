@@ -28,53 +28,74 @@ interface Cluster {
   totalVisits: number;
 }
 
-const GRID_SIZE = 2; // Size of grid cells in degrees
+function getGridSize(zoom: number): number {
+  if (zoom <= 1) return 20; // World view
+  if (zoom <= 2) return 10; // Continental view
+  if (zoom <= 4) return 5;  // Country view
+  return 2; // City view
+}
 
-function createClusters(visitors: Visitor[]): Cluster[] {
+function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
   // Debug log the input data
   console.log("Raw visitors data:", visitors);
 
   const grid: { [key: string]: Visitor[] } = {};
+  const gridSize = getGridSize(zoom);
 
   // Assign visitors to grid cells
-  visitors.forEach(visitor => {
+  visitors.forEach((visitor) => {
     // Convert string coordinates to numbers
-    const lat = typeof visitor.latitude === 'string' ? parseFloat(visitor.latitude) : visitor.latitude;
-    const lon = typeof visitor.longitude === 'string' ? parseFloat(visitor.longitude) : visitor.longitude;
+    const lat =
+      typeof visitor.latitude === "string"
+        ? parseFloat(visitor.latitude)
+        : visitor.latitude;
+    const lon =
+      typeof visitor.longitude === "string"
+        ? parseFloat(visitor.longitude)
+        : visitor.longitude;
 
     // Ensure we have valid coordinates
     if (isNaN(lat) || isNaN(lon)) {
-      console.warn('Invalid coordinates for visitor:', visitor);
+      console.warn("Invalid coordinates for visitor:", visitor);
       return;
     }
 
-    const gridLat = Math.floor(lat / GRID_SIZE) * GRID_SIZE;
-    const gridLon = Math.floor(lon / GRID_SIZE) * GRID_SIZE;
+    const gridLat = Math.floor(lat / gridSize) * gridSize;
+    const gridLon = Math.floor(lon / gridSize) * gridSize;
     const key = `${gridLat},${gridLon}`;
-    
+
     if (!grid[key]) {
       grid[key] = [];
     }
     grid[key].push({
       ...visitor,
       latitude: lat,
-      longitude: lon
+      longitude: lon,
     });
   });
 
   // Convert grid cells to clusters
   const clusters = Object.entries(grid).map(([key, cellVisitors]) => {
-    const avgLat = cellVisitors.reduce((sum, v) => {
-      const lat = typeof v.latitude === 'string' ? parseFloat(v.latitude) : v.latitude;
-      return sum + lat;
-    }, 0) / cellVisitors.length;
+    const avgLat =
+      cellVisitors.reduce((sum, v) => {
+        const lat =
+          typeof v.latitude === "string" ? parseFloat(v.latitude) : v.latitude;
+        return sum + lat;
+      }, 0) / cellVisitors.length;
 
-    const avgLon = cellVisitors.reduce((sum, v) => {
-      const lon = typeof v.longitude === 'string' ? parseFloat(v.longitude) : v.longitude;
-      return sum + lon;
-    }, 0) / cellVisitors.length;
+    const avgLon =
+      cellVisitors.reduce((sum, v) => {
+        const lon =
+          typeof v.longitude === "string"
+            ? parseFloat(v.longitude)
+            : v.longitude;
+        return sum + lon;
+      }, 0) / cellVisitors.length;
 
-    const totalVisits = cellVisitors.reduce((sum, v) => sum + (v.visit_count || 1), 0);
+    const totalVisits = cellVisitors.reduce(
+      (sum, v) => sum + (v.visit_count || 1),
+      0,
+    );
 
     return {
       latitude: avgLat,
@@ -98,13 +119,10 @@ function getMarkerSize(totalVisits: number, zoom: number): number {
 }
 
 function getClusterTooltip(cluster: Cluster): string {
-  const cities = [...new Set(cluster.visitors.map(v => v.city))];
-  const countries = [...new Set(cluster.visitors.map(v => v.country))];
-  return `${cluster.totalVisits} visit${
-    cluster.totalVisits === 1 ? "" : "s"
-  } from ${cluster.visitors.length} visitor${
-    cluster.visitors.length === 1 ? "" : "s"
-  } in ${cities.join(", ")}, ${countries.join(", ")}`;
+  const cities = [...new Set(cluster.visitors.map((v) => v.city))];
+  const countries = [...new Set(cluster.visitors.map((v) => v.country))];
+  return `${cluster.visitors.length} visitor${cluster.visitors.length === 1 ? "" : "s"
+    } from ${cities.join(", ")}, ${countries.join(", ")}`;
 }
 
 function getVisitorId(): string {
@@ -116,8 +134,7 @@ function getVisitorId(): string {
   return id;
 }
 
-const geoUrl =
-  "https://unpkg.com/world-atlas@2.0.2/countries-110m.json";
+const geoUrl = "https://unpkg.com/world-atlas@2.0.2/countries-110m.json";
 
 export const VisitorMap: React.FC = () => {
   const [visitorId, setVisitorId] = useState("");
@@ -129,7 +146,7 @@ export const VisitorMap: React.FC = () => {
     url: "http://localhost:5010/api/visitors/shape",
   });
 
-  const clusters = useMemo(() => createClusters(visitors), [visitors]);
+  const clusters = useMemo(() => createClusters(visitors, zoom), [visitors, zoom]);
 
   useEffect(() => {
     setVisitorId(getVisitorId());
@@ -146,12 +163,12 @@ export const VisitorMap: React.FC = () => {
   if (!visitorId) {
     return <div>No visitor ID found</div>;
   }
-console.log(`hijkjj`)
+  console.log(`hijkjj`);
   return (
     <div className="w-full h-screen bg-gray-900">
       <Tooltip id="visitor-tooltip" />
       <ComposableMap projection="geoMercator" className="w-full h-full">
-        <ZoomableGroup 
+        <ZoomableGroup
           center={center}
           zoom={zoom}
           onMoveEnd={({ coordinates, zoom: newZoom }) => {
