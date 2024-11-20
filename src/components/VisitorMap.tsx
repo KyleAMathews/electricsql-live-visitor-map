@@ -154,6 +154,36 @@ export const VisitorMap: React.FC = () => {
     setVisitorId(getVisitorId());
   }, []);
 
+  // Record visit when the component mounts
+  useEffect(() => {
+    if (visitorId) {
+      // Get the user's geolocation from ipapi.co
+      fetch("https://ipapi.co/json/")
+        .then(res => res.json())
+        .then(data => {
+          // Record the visit with geolocation data
+          fetch("http://localhost:5010/api/record-visit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              visitorId: visitorId,
+              latitude: parseFloat(data.latitude),
+              longitude: parseFloat(data.longitude),
+              country: data.country_name,
+              city: data.city,
+            }),
+          }).catch(error => {
+            console.error("Error recording visit:", error);
+          });
+        })
+        .catch(error => {
+          console.error("Error getting geolocation:", error);
+        });
+    }
+  }, [visitorId]);
+
   if (isLoading) {
     return <div>Loading...</div>;
   }
