@@ -38,9 +38,6 @@ function getGridSize(zoom: number): number {
 }
 
 function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
-  // Debug log the input data
-  console.log("Raw visitors data:", visitors);
-
   const grid: { [key: string]: Visitor[] } = {};
   const gridSize = getGridSize(zoom);
   
@@ -61,10 +58,7 @@ function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
         : visitor.longitude;
 
     // Ensure we have valid coordinates
-    if (isNaN(lat) || isNaN(lon)) {
-      console.warn("Invalid coordinates for visitor:", visitor);
-      return;
-    }
+    if (isNaN(lat) || isNaN(lon)) return;
 
     const gridLat = Math.floor(lat / gridSize) * gridSize;
     const gridLon = Math.floor(lon / gridSize) * gridSize;
@@ -117,9 +111,6 @@ function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
     };
   });
 
-  // Debug log the output clusters
-  console.log("Generated clusters:", clusters);
-
   return clusters;
 }
 
@@ -153,7 +144,6 @@ export const VisitorMap: React.FC = () => {
   const [tooltipContent, setTooltipContent] = useState("");
   const [zoom, setZoom] = useState(1);
   const [center, setCenter] = useState<[number, number]>([0, 0]);
-  console.log({ visitorId });
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: "http://localhost:5010/api/visitors/shape",
   });
@@ -175,9 +165,19 @@ export const VisitorMap: React.FC = () => {
   if (!visitorId) {
     return <div>No visitor ID found</div>;
   }
-  console.log(`hijkjj`);
+
   return (
-    <div className="w-full h-screen bg-gray-900">
+    <div className="w-full h-screen bg-gray-900 relative">
+      {/* Title */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-6 py-3 rounded-lg text-white shadow-lg">
+        <h1 className="text-xl font-bold">Live Visitor Tracker — Powered by ElectricSQL</h1>
+      </div>
+
+      {/* Stats Panel */}
+      <div className="absolute top-4 left-4 bg-gray-800 p-4 rounded-lg text-white shadow-lg">
+        <div className="text-lg">Total Visitors: {visitors.length}</div>
+      </div>
+
       <Tooltip id="visitor-tooltip" />
       <ComposableMap projection="geoMercator" className="w-full h-full">
         <ZoomableGroup
@@ -212,12 +212,12 @@ export const VisitorMap: React.FC = () => {
               ))
             }
           </Geographies>
-          {clusters.map((cluster, i) => {
+          {clusters.map((cluster) => {
             const isNewVisit = cluster.lastVisitTime !== undefined;
-            const circleKey = `${i}-${cluster.lastVisitTime || ''}-${cluster.latitude}-${cluster.longitude}`;
+            const circleKey = `${cluster.latitude}-${cluster.longitude}`;
             return (
               <Marker
-                key={`cluster-${i}`}
+                key={`cluster-${circleKey}`}
                 coordinates={[cluster.longitude, cluster.latitude]}
                 data-tooltip-id="visitor-tooltip"
                 data-tooltip-content={getClusterTooltip(cluster)}
