@@ -9,6 +9,7 @@ import {
 import { Tooltip } from "react-tooltip";
 import { useShape } from "@electric-sql/react";
 import { v4 as uuidv4 } from "uuid";
+import "../styles/animations.css";
 
 interface Visitor {
   id: string;
@@ -26,6 +27,7 @@ interface Cluster {
   longitude: number;
   visitors: Visitor[];
   totalVisits: number;
+  lastVisitTime?: number;
 }
 
 function getGridSize(zoom: number): number {
@@ -41,6 +43,10 @@ function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
 
   const grid: { [key: string]: Visitor[] } = {};
   const gridSize = getGridSize(zoom);
+  
+  // Find the most recent visit time across all visitors
+  const mostRecentVisit = Math.max(...visitors.map(v => new Date(v.last_seen || 0).getTime()));
+  const recentThreshold = mostRecentVisit - 5000; // Consider visits within last 5 seconds of most recent as new
 
   // Assign visitors to grid cells
   visitors.forEach((visitor) => {
@@ -97,11 +103,17 @@ function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
       0,
     );
 
+    // Find the most recent visit time in this cluster
+    const lastVisitTime = Math.max(
+      ...cellVisitors.map(v => new Date(v.last_seen || 0).getTime())
+    );
+
     return {
       latitude: avgLat,
       longitude: avgLon,
       visitors: cellVisitors,
       totalVisits,
+      lastVisitTime: lastVisitTime >= recentThreshold ? lastVisitTime : undefined,
     };
   });
 
@@ -200,28 +212,36 @@ export const VisitorMap: React.FC = () => {
               ))
             }
           </Geographies>
-          {clusters.map((cluster, i) => (
-            <Marker
-              key={`cluster-${i}`}
-              coordinates={[cluster.longitude, cluster.latitude]}
-              data-tooltip-id="visitor-tooltip"
-              data-tooltip-content={getClusterTooltip(cluster)}
-              onMouseEnter={() => {
-                setTooltipContent(getClusterTooltip(cluster));
-              }}
-              onMouseLeave={() => {
-                setTooltipContent("");
-              }}
-            >
-              <circle
-                r={getMarkerSize(cluster.totalVisits, zoom)}
-                fill="#F1C40F"
-                fillOpacity={0.6}
-                stroke="#F1C40F"
-                strokeWidth={2 / zoom} // Scale stroke width with zoom
-              />
-            </Marker>
-          ))}
+          {clusters.map((cluster, i) => {
+            const isNewVisit = cluster.lastVisitTime !== undefined;
+            return (
+              <Marker
+                key={`cluster-${i}`}
+                coordinates={[cluster.longitude, cluster.latitude]}
+                data-tooltip-id="visitor-tooltip"
+                data-tooltip-content={getClusterTooltip(cluster)}
+                onMouseEnter={() => {
+                  setTooltipContent(getClusterTooltip(cluster));
+                }}
+                onMouseLeave={() => {
+                  setTooltipContent("");
+                }}
+              >
+                <circle
+                  r={getMarkerSize(cluster.totalVisits, zoom)}
+                  className={`transition-all duration-[5000ms] ${
+                    isNewVisit ? 'animate-visit' : ''
+                  }`}
+                  style={{
+                    fill: isNewVisit ? '#ff6b6b' : '#F1C40F',
+                    fillOpacity: 0.6,
+                    stroke: isNewVisit ? '#ff6b6b' : '#F1C40F',
+                    strokeWidth: 2 / zoom
+                  }}
+                />
+              </Marker>
+            );
+          })}
         </ZoomableGroup>
       </ComposableMap>
     </div>

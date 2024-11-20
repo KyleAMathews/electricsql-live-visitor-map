@@ -16,6 +16,24 @@
   }
 }
 
+@keyframes visit-pulse {
+  0% {
+    transform: scale(1);
+    fill: #ff6b6b;
+    stroke: #ff6b6b;
+  }
+  50% {
+    transform: scale(1.5);
+    fill: #ffd93d;
+    stroke: #ffd93d;
+  }
+  100% {
+    transform: scale(1);
+    fill: #F1C40F;
+    stroke: #F1C40F;
+  }
+}
+
 .animate-visit {
-  animation: visitPulse 5s ease-out;
+  animation: visit-pulse 5s ease-out forwards;
 }
