@@ -229,9 +229,7 @@ export const VisitorMap: React.FC = () => {
               >
                 <circle
                   r={getMarkerSize(cluster.totalVisits, zoom)}
-                  className={`transition-all duration-[5000ms] ${
-                    isNewVisit ? 'animate-visit' : ''
-                  }`}
+                  className={isNewVisit ? 'animate-visit' : ''}
                   style={{
                     fill: isNewVisit ? '#ff6b6b' : '#F1C40F',
                     fillOpacity: 0.6,
