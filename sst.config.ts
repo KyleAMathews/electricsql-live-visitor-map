@@ -18,7 +18,7 @@ export default $config({
         name: `visitor-map`,
       });
 
-      // databaseUri.apply(applyMigrations);
+      databaseUri.apply(applyMigrations);
       // databaseUri.apply(loadData);
       // TOOD
       // - add migration file
@@ -41,7 +41,7 @@ export default $config({
 });
 
 function applyMigrations(uri: string) {
-  execSync(`pnpm exec pg-migrations apply --directory ./db/migrations`, {
+  execSync(`npx pg-migrations apply --directory ./db/migrations`, {
     env: {
       ...process.env,
       DATABASE_URL: uri,
