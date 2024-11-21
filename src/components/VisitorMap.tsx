@@ -10,7 +10,8 @@ import { v4 as uuidv4 } from "uuid";
 import * as TWEEN from "@tweenjs/tween.js";
 import "../styles/animations.css";
 import RecentVisitors from "./RecentVisitors";
-import { Group, ConeGeometry, MeshPhongMaterial, Mesh, PointLight, Color, DoubleSide, AmbientLight, DirectionalLight, Fog, Object3D } from "three";
+import { Group, ConeGeometry, MeshPhongMaterial, Mesh, PointLight, Color, DoubleSide, AmbientLight, DirectionalLight, Fog } from "three";
+import type { Object3D } from "three";
 
 // Dynamically import Globe
 const Globe = React.lazy(() => import("react-globe.gl"));
@@ -138,6 +139,7 @@ function VisitorMap() {
   const [tooltipContent, setTooltipContent] = useState("");
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
@@ -245,6 +247,13 @@ function VisitorMap() {
   useEffect(() => {
     setIsMounted(true);
     setVisitorId(getVisitorId());
+  }, []);
+
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -566,8 +575,6 @@ function VisitorMap() {
       return () => window.removeEventListener("mousemove", handleMouseMove);
     }
   }, []);
-
-  const isMobile = window.innerWidth < 768;
 
   if (!isMounted) {
     return <div>Loading globe...</div>;
