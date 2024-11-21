@@ -10,16 +10,10 @@ import { v4 as uuidv4 } from "uuid";
 import * as TWEEN from "@tweenjs/tween.js";
 import "../styles/animations.css";
 import RecentVisitors from "./RecentVisitors";
+import { Group, ConeGeometry, MeshPhongMaterial, Mesh, PointLight, Color, DoubleSide, AmbientLight, DirectionalLight, Fog, Object3D } from "three";
 
-// Dynamically import Globe to ensure it only loads on the client
+// Dynamically import Globe
 const Globe = React.lazy(() => import("react-globe.gl"));
-// Import THREE from react-globe.gl to avoid duplicate instances
-let THREE: any;
-if (typeof window !== 'undefined') {
-  import('react-globe.gl').then((mod) => {
-    THREE = mod.default.three;
-  });
-}
 
 interface Visitor {
   id: string;
@@ -270,19 +264,19 @@ function VisitorMap() {
 
       // Enhance the globe's appearance
       const globe = (globeRef.current as any).scene();
-      globe.fog = new THREE.Fog("#000000", 400, 2000);
+      globe.fog = new Fog("#000000", 400, 2000);
 
       // Add ambient light for better visibility
-      const ambientLight = new THREE.AmbientLight("#ffffff", 0.8);
+      const ambientLight = new AmbientLight("#ffffff", 0.8);
       globe.add(ambientLight);
 
       // Add directional light for better depth
-      const dirLight = new THREE.DirectionalLight("#ffffff", 1);
+      const dirLight = new DirectionalLight("#ffffff", 1);
       dirLight.position.set(1, 1, 1);
       globe.add(dirLight);
 
       // Add a subtle blue point light from below
-      const bottomLight = new THREE.PointLight("#0066ff", 0.8, 1000);
+      const bottomLight = new PointLight("#0066ff", 0.8, 1000);
       bottomLight.position.set(0, -500, 0);
       globe.add(bottomLight);
     }
@@ -296,224 +290,229 @@ function VisitorMap() {
 
   // Custom render function for 3D markers
   const customRender = useCallback((marker: any) => {
-    console.log("Rendering marker:", {
-      lat: marker.lat,
-      lng: marker.lng,
-      isNew: marker.isNew,
-      timeSinceVisit: marker.timeSinceVisit,
-      visitTime: marker.visitTime,
-    });
+    try {
+      console.log("Rendering marker:", {
+        lat: marker.lat,
+        lng: marker.lng,
+        isNew: marker.isNew,
+        timeSinceVisit: marker.timeSinceVisit,
+        visitTime: marker.visitTime,
+      });
 
-    // Create a group to hold our spike
-    const group = new THREE.Group();
+      // Create a group to hold our spike
+      const group = new Group();
 
-    // Create a spike (cone)
-    const spikeGeometry = new THREE.ConeGeometry(
-      marker.size, // radius at base
-      marker.height, // height
-      8, // segments
-      1, // height segments
-      false, // open ended
-    );
-    const spikeMaterial = new THREE.MeshPhongMaterial({
-      color: marker.color,
-      emissive: marker.emissive,
-      emissiveIntensity: marker.intensity,
-      transparent: true,
-      opacity: 0.8,
-      shininess: 100,
-      side: THREE.DoubleSide,
-    });
-    const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+      // Create a spike (cone)
+      const spikeGeometry = new ConeGeometry(
+        marker.size, // radius at base
+        marker.height, // height
+        8, // segments
+        1, // height segments
+        false, // open ended
+      );
+      const spikeMaterial = new MeshPhongMaterial({
+        color: marker.color,
+        emissive: marker.emissive,
+        emissiveIntensity: marker.intensity,
+        transparent: true,
+        opacity: 0.8,
+        shininess: 100,
+        side: DoubleSide,
+      });
+      const spike = new Mesh(spikeGeometry, spikeMaterial);
 
-    // Center the spike at its base
-    spike.position.y = marker.height / 2;
+      // Center the spike at its base
+      spike.position.y = marker.height / 2;
 
-    // Add point light for glow effect
-    const light = new THREE.PointLight(
-      marker.color,
-      marker.intensity * 2,
-      marker.height * 10,
-    );
-    light.position.y = marker.height / 2;
+      // Add point light for glow effect
+      const light = new PointLight(
+        marker.color,
+        marker.intensity * 2,
+        marker.height * 10,
+      );
+      light.position.y = marker.height / 2;
 
-    group.add(spike);
-    group.add(light);
+      group.add(spike);
+      group.add(light);
 
-    // Add hover effect
-    const onHover = (hovering: boolean) => {
-      if (!group) return;
+      // Add hover effect
+      const onHover = (hovering: boolean) => {
+        if (!group) return;
 
-      const scale = hovering ? 1.2 : 1.0;
-      const duration = 200;
-      const easing = TWEEN.Easing.Cubic.Out;
+        const scale = hovering ? 1.2 : 1.0;
+        const duration = 200;
+        const easing = TWEEN.Easing.Cubic.Out;
 
-      // Scale tween
-      new TWEEN.Tween(group.scale)
-        .to(
-          {
-            x: scale,
-            y: scale,
-            z: scale,
-          },
-          duration,
-        )
-        .easing(easing)
-        .start();
-
-      // Light intensity tween
-      if (light) {
-        new TWEEN.Tween(light)
+        // Scale tween
+        new TWEEN.Tween(group.scale)
           .to(
             {
-              intensity: hovering ? marker.intensity * 4 : marker.intensity * 2,
+              x: scale,
+              y: scale,
+              z: scale,
             },
             duration,
           )
           .easing(easing)
           .start();
-      }
 
-      // Update tooltip
-      if (hovering) {
-        const location = marker.cluster.city
-          ? `${marker.cluster.city}, ${marker.cluster.country}`
-          : marker.cluster.country || "Unknown Location";
+        // Light intensity tween
+        if (light) {
+          new TWEEN.Tween(light)
+            .to(
+              {
+                intensity: hovering ? marker.intensity * 4 : marker.intensity * 2,
+              },
+              duration,
+            )
+            .easing(easing)
+            .start();
+        }
 
-        setTooltipContent(
-          `${location}<br/>${marker.cluster.totalVisits} visitor${marker.cluster.totalVisits !== 1 ? "s" : ""}`,
-        );
-        setShowTooltip(true);
-      } else {
-        setShowTooltip(false);
-      }
-    };
+        // Update tooltip
+        if (hovering) {
+          const location = marker.cluster.city
+            ? `${marker.cluster.city}, ${marker.cluster.country}`
+            : marker.cluster.country || "Unknown Location";
 
-    // Store the hover handler on the group
-    (group as any).__onHover = onHover;
-
-    // Set initial scale
-    group.scale.set(1, 1, 1);
-
-    // Add a pulsing animation for new visitors
-    let animationFrameId: number | null = null;
-    if (marker.isNew) {
-      console.log("Starting pulse animation for new visitor", {
-        lat: marker.lat,
-        lng: marker.lng,
-        timeSinceVisit: marker.timeSinceVisit,
-      });
-
-      const startTime = Date.now();
-      const ANIMATION_DURATION = 30000; // 30 seconds
-      const FADE_DURATION = 5000; // 5 second fade out
-
-      // Create color objects for interpolation
-      const startColor = new THREE.Color("#ffaa00");
-      const peakColor = new THREE.Color("#ff3333");
-      const startEmissive = new THREE.Color("#ff6600");
-      const peakEmissive = new THREE.Color("#ff0000");
-      const tempColor = new THREE.Color();
-      const tempEmissive = new THREE.Color();
-
-      const animate = () => {
-        try {
-          const elapsedTime = Date.now() - startTime;
-          const timeLeft = ANIMATION_DURATION - elapsedTime;
-
-          // Calculate fade out factor (1 -> 0 over FADE_DURATION)
-          const fadeOutFactor =
-            timeLeft < FADE_DURATION ? timeLeft / FADE_DURATION : 1;
-
-          // Slower, more dramatic pulsing
-          const pulse = Math.sin(elapsedTime * 0.003) * 0.3 + 1.3; // Pulsing between 1.0 and 1.6
-          const finalPulse = 1 + (pulse - 1) * fadeOutFactor; // Smoothly reduce pulse intensity
-
-          // Calculate color interpolation factor (0 to 1 to 0)
-          const colorPulse = Math.sin(elapsedTime * 0.003) * 0.5 + 0.5; // Oscillates between 0 and 1
-          const finalColorFactor = colorPulse * fadeOutFactor;
-
-          // Interpolate colors
-          tempColor.copy(startColor).lerp(peakColor, finalColorFactor);
-          tempEmissive.copy(startEmissive).lerp(peakEmissive, finalColorFactor);
-
-          // Log animation state periodically
-          if (elapsedTime % 1000 < 16) {
-            // Log roughly every second
-            console.log("Animation state:", {
-              timeLeft,
-              fadeOutFactor,
-              pulse,
-              finalPulse,
-              colorPulse,
-              finalColorFactor,
-              lat: marker.lat,
-              lng: marker.lng,
-            });
-          }
-
-          // Update spike material and scale
-          if (spike?.material instanceof THREE.MeshPhongMaterial) {
-            spike.material.emissiveIntensity = marker.intensity * finalPulse;
-            spike.material.opacity = Math.min(0.8, 0.6 + finalPulse * 0.2);
-            spike.material.color.copy(tempColor);
-            spike.material.emissive.copy(tempEmissive);
-            spike.material.needsUpdate = true;
-          }
-
-          // Scale the spike slightly with the pulse
-          group.scale.set(finalPulse, 1, finalPulse);
-
-          if (light) {
-            // Update light intensity, distance, and color
-            light.intensity = marker.intensity * 3 * finalPulse;
-            light.distance = marker.height * (10 + finalPulse * 5);
-            light.color.copy(tempColor);
-          }
-
-          if (timeLeft > 0) {
-            animationFrameId = requestAnimationFrame(animate);
-          } else {
-            console.log("Ending pulse animation");
-            // Reset to non-new state
-            if (spike?.material instanceof THREE.MeshPhongMaterial) {
-              spike.material.color.copy(startColor);
-              spike.material.emissive.copy(startEmissive);
-              spike.material.emissiveIntensity = 1;
-              spike.material.opacity = 0.8;
-            }
-            group.scale.set(1, 1, 1);
-            if (light) {
-              light.color.copy(startColor);
-              light.intensity = 2;
-            }
-          }
-        } catch (error) {
-          console.error("Error in animation:", error);
-          if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-          }
+          setTooltipContent(
+            `${location}<br/>${marker.cluster.totalVisits} visitor${marker.cluster.totalVisits !== 1 ? "s" : ""}`,
+          );
+          setShowTooltip(true);
+        } else {
+          setShowTooltip(false);
         }
       };
-      animate();
-    }
 
-    // Cleanup function
-    (group as any).__cleanup = () => {
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId);
+      // Store the hover handler on the group
+      (group as any).__onHover = onHover;
+
+      // Set initial scale
+      group.scale.set(1, 1, 1);
+
+      // Add a pulsing animation for new visitors
+      let animationFrameId: number | null = null;
+      if (marker.isNew) {
+        console.log("Starting pulse animation for new visitor", {
+          lat: marker.lat,
+          lng: marker.lng,
+          timeSinceVisit: marker.timeSinceVisit,
+        });
+
+        const startTime = Date.now();
+        const ANIMATION_DURATION = 30000; // 30 seconds
+        const FADE_DURATION = 5000; // 5 second fade out
+
+        // Create color objects for interpolation
+        const startColor = new Color("#ffaa00");
+        const peakColor = new Color("#ff3333");
+        const startEmissive = new Color("#ff6600");
+        const peakEmissive = new Color("#ff0000");
+        const tempColor = new Color();
+        const tempEmissive = new Color();
+
+        const animate = () => {
+          try {
+            const elapsedTime = Date.now() - startTime;
+            const timeLeft = ANIMATION_DURATION - elapsedTime;
+
+            // Calculate fade out factor (1 -> 0 over FADE_DURATION)
+            const fadeOutFactor =
+              timeLeft < FADE_DURATION ? timeLeft / FADE_DURATION : 1;
+
+            // Slower, more dramatic pulsing
+            const pulse = Math.sin(elapsedTime * 0.003) * 0.3 + 1.3; // Pulsing between 1.0 and 1.6
+            const finalPulse = 1 + (pulse - 1) * fadeOutFactor; // Smoothly reduce pulse intensity
+
+            // Calculate color interpolation factor (0 to 1 to 0)
+            const colorPulse = Math.sin(elapsedTime * 0.003) * 0.5 + 0.5; // Oscillates between 0 and 1
+            const finalColorFactor = colorPulse * fadeOutFactor;
+
+            // Interpolate colors
+            tempColor.copy(startColor).lerp(peakColor, finalColorFactor);
+            tempEmissive.copy(startEmissive).lerp(peakEmissive, finalColorFactor);
+
+            // Log animation state periodically
+            if (elapsedTime % 1000 < 16) {
+              // Log roughly every second
+              console.log("Animation state:", {
+                timeLeft,
+                fadeOutFactor,
+                pulse,
+                finalPulse,
+                colorPulse,
+                finalColorFactor,
+                lat: marker.lat,
+                lng: marker.lng,
+              });
+            }
+
+            // Update spike material and scale
+            if (spike?.material instanceof MeshPhongMaterial) {
+              spike.material.emissiveIntensity = marker.intensity * finalPulse;
+              spike.material.opacity = Math.min(0.8, 0.6 + finalPulse * 0.2);
+              spike.material.color.copy(tempColor);
+              spike.material.emissive.copy(tempEmissive);
+              spike.material.needsUpdate = true;
+            }
+
+            // Scale the spike slightly with the pulse
+            group.scale.set(finalPulse, 1, finalPulse);
+
+            if (light) {
+              // Update light intensity, distance, and color
+              light.intensity = marker.intensity * 3 * finalPulse;
+              light.distance = marker.height * (10 + finalPulse * 5);
+              light.color.copy(tempColor);
+            }
+
+            if (timeLeft > 0) {
+              animationFrameId = requestAnimationFrame(animate);
+            } else {
+              console.log("Ending pulse animation");
+              // Reset to non-new state
+              if (spike?.material instanceof MeshPhongMaterial) {
+                spike.material.color.copy(startColor);
+                spike.material.emissive.copy(startEmissive);
+                spike.material.emissiveIntensity = 1;
+                spike.material.opacity = 0.8;
+              }
+              group.scale.set(1, 1, 1);
+              if (light) {
+                light.color.copy(startColor);
+                light.intensity = 2;
+              }
+            }
+          } catch (error) {
+            console.error("Error in animation:", error);
+            if (animationFrameId !== null) {
+              cancelAnimationFrame(animationFrameId);
+            }
+          }
+        };
+        animate();
       }
-      // Dispose of geometries and materials
-      spikeGeometry.dispose();
-      spikeMaterial.dispose();
-    };
 
-    return group;
+      // Cleanup function
+      (group as any).__cleanup = () => {
+        if (animationFrameId !== null) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        // Dispose of geometries and materials
+        spikeGeometry.dispose();
+        spikeMaterial.dispose();
+      };
+
+      return group;
+    } catch (error) {
+      console.error("Error rendering marker:", error);
+      return null;
+    }
   }, []);
 
   // Custom update function for Three.js objects
   const customThreeObjectUpdate = useCallback(
-    (obj: THREE.Object3D | undefined, d: any) => {
+    (obj: Object3D | undefined, d: any) => {
       if (!obj || !d) return;
 
       try {
@@ -568,6 +567,8 @@ function VisitorMap() {
     }
   }, []);
 
+  const isMobile = window.innerWidth < 768;
+
   if (!isMounted) {
     return <div>Loading globe...</div>;
   }
@@ -586,13 +587,49 @@ function VisitorMap() {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div className="title">ElectricSQL Live Visitors Map</div>
+      <div
+        style={{
+          position: "absolute",
+          top: "20px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          color: "#fff",
+          fontSize: isMobile ? "1.2rem" : "1.8rem",
+          fontWeight: "bold",
+          textAlign: "center",
+          textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
+          zIndex: 10,
+        }}
+      >
+        ElectricSQL Live Visitors Map
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: isMobile ? "20px" : "30px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          color: "#fff",
+          fontSize: isMobile ? "1rem" : "1.2rem",
+          fontWeight: "bold",
+          textAlign: "center",
+          padding: "8px 16px",
+          background: "rgba(0, 0, 0, 0.6)",
+          borderRadius: "8px",
+          boxShadow: "0 0 10px rgba(255, 255, 255, 0.2)",
+          backdropFilter: "blur(5px)",
+          zIndex: 10,
+        }}
+      >
+        {visitors.length} Total Visitors
+      </div>
+
       <RecentVisitors visitors={visitors} />
       <div
         dangerouslySetInnerHTML={{ __html: tooltipContent }}
         style={tooltipStyle as any}
       />
-      <div className="visitor-count">{visitors.length} total visitors</div>
       <React.Suspense fallback={<div>Loading globe visualization...</div>}>
         <Globe
           ref={globeRef}
