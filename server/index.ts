@@ -13,10 +13,13 @@ app.use("*", cors());
 
 const visitSchema = z.object({
   visitorId: z.string().uuid(),
+});
+
+const geoDataSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  country: z.string().min(1).optional(),
-  city: z.string().min(1).optional(),
+  country: z.string().min(1),
+  city: z.string().min(1),
 });
 
 // Shape API endpoint
@@ -56,8 +59,30 @@ app.get("/api/visitors/shape", async (c) => {
 // Record visit endpoint
 app.post("/api/record-visit", zValidator("json", visitSchema), async (c) => {
   try {
-    const { visitorId, latitude, longitude, country, city } =
-      c.req.valid("json");
+    const { visitorId } = c.req.valid("json");
+    const cf = c.req.raw.cf;
+
+    if (!cf) {
+      return c.json({ error: "No geolocation data available from Cloudflare" }, 400);
+    }
+
+    const geoData = {
+      latitude: parseFloat(cf.latitude as string),
+      longitude: parseFloat(cf.longitude as string),
+      country: cf.country,
+      city: cf.city,
+    };
+
+    // Validate the geolocation data
+    const geoValidation = geoDataSchema.safeParse(geoData);
+    if (!geoValidation.success) {
+      return c.json({ 
+        error: "Invalid geolocation data from Cloudflare",
+        details: geoValidation.error.errors
+      }, 400);
+    }
+
+    const { latitude, longitude, country, city } = geoValidation.data;
 
     console.log(`recording visit`, {
       visitorId,
@@ -66,9 +91,9 @@ app.post("/api/record-visit", zValidator("json", visitSchema), async (c) => {
       country,
       city,
     });
+    
     // Create a new postgres client for each request
     const sql = postgres(Resource.databaseUriLink.url);
-    console.log(sql, Resource.databaseUriLink.url);
 
     const res = await sql`
       INSERT INTO visitors (id, visitor_id, latitude, longitude, country, city, last_seen)
