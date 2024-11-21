@@ -4,14 +4,11 @@
 /* deno-fmt-ignore-file */
 import "sst"
 export {}
+import "sst"
 declare module "sst" {
   export interface Resource {
     "ElectricUrl": {
       "type": "sst.sst.Linkable"
-      "url": string
-    }
-    "VisitorMapAPI": {
-      "type": "sst.cloudflare.Worker"
       "url": string
     }
     "databaseUriLink": {
@@ -27,5 +24,12 @@ declare module "sst" {
       "type": "sst.aws.Astro"
       "url": string
     }
+  }
+}
+// cloudflare 
+import * as cloudflare from "@cloudflare/workers-types";
+declare module "sst" {
+  export interface Resource {
+    "VisitorMapAPI": cloudflare.Service
   }
 }

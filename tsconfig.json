@@ -1,5 +1,7 @@
 {
   "extends": "astro/tsconfigs/base",
   "exclude": ["sst.config.ts"],
-  "types": ["@cloudflare/workers-types"]
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types"]
+  }
 }

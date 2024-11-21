@@ -1,7 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 export function createExampleDbAndAddtoElectric({ name }: { name: string }) {
-  const NEON_ELECTRIC_EXAMPLES_ID = `hidden-cloud-99592053`;
+  const NEON_ELECTRIC_EXAMPLES_ID = `bold-bush-75922852`
   const project = neon.getProjectOutput({ id: NEON_ELECTRIC_EXAMPLES_ID });
 
   const db = new neon.Database(`${name}-${$app.stage}`, {

@@ -50,6 +50,7 @@ export default $config({
 });
 
 function applyMigrations(uri: string) {
+  console.log(`apply migrations to `, uri)
   execSync(`npx pg-migrations apply --directory ./db/migrations`, {
     env: {
       ...process.env,
