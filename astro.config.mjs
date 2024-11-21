@@ -1,8 +1,10 @@
-import { defineConfig } from 'astro/config';
+import aws from "astro-sst";
+import { defineConfig } from "astro/config";
 import react from "@astrojs/react";
 import tailwind from "@astrojs/tailwind";
 
 export default defineConfig({
   integrations: [react(), tailwind()],
-  output: 'static'
+  output: "static",
+  adapter: aws(),
 });
