@@ -3,6 +3,8 @@
 import { execSync } from "child_process";
 import { createExampleDbAndAddtoElectric } from "./create-db-and-add-to-electric";
 
+const ELECTRIC_URL = "https://api-dev-production.electric-sql.com";
+
 export default $config({
   app(input) {
     return {
@@ -18,21 +20,28 @@ export default $config({
         name: `visitor-map`,
       });
 
-      databaseUri.apply(applyMigrations);
-      // databaseUri.apply(loadData);
-      // TOOD
-      // - add migration file
-      // - dev command to run astro locally
-      //    - link in the db, etc.
-      // - add cloudflare worker
+      databaseUri.properties.url.apply(applyMigrations);
 
-      const website = deploySite(electricInfo);
+      const electricUrlLink = new sst.Linkable("ElectricUrl", {
+        properties: {
+          url: ELECTRIC_URL
+        },
+      });
+
+      // Add Cloudflare Worker
+      const worker = new sst.cloudflare.Worker("VisitorMapAPI", {
+        handler: "./server/index.ts",
+        url: true,
+        link: [databaseUri, electricInfo, electricUrlLink],
+      });
+
+      const website = deploySite(electricInfo, worker);
 
       return {
-        databaseUri,
-        database_id: electricInfo.id,
-        electric_token: electricInfo.token,
+        databaseUri: databaseUri.properties.url,
+        ...electricInfo.properties,
         website: website.url,
+        api: worker.url,
       };
     } catch (e) {
       console.error(`Failed to deploy linearlite stack`, e);
@@ -49,25 +58,24 @@ function applyMigrations(uri: string) {
   });
 }
 
-function loadData(uri: string) {
-  execSync(`pnpm run db:load-data`, {
-    env: {
-      ...process.env,
-      DATABASE_URL: uri,
-    },
-  });
-}
-
-function deploySite(electricInfo: $util.Output<{ id: string; token: string }>) {
+function deploySite(
+  electricInfo: sst.Linkable<{ id: string; token: string }>,
+  worker: sst.cloudflare.Worker,
+) {
   return new sst.aws.Astro("visitormap", {
     domain: {
       name: `visitor-map${$app.stage === `production` ? `` : `-stage-${$app.stage}`}.electric-sql.com`,
       dns: sst.cloudflare.dns(),
     },
+    dev: {
+      url: `http://localhost:4321`,
+    },
+    link: [worker],
     environment: {
-      VITE_ELECTRIC_URL: `https://api-dev-production.electric-sql.com`,
-      VITE_ELECTRIC_TOKEN: electricInfo.token,
-      VITE_DATABASE_ID: electricInfo.id,
+      PUBLIC_ELECTRIC_TOKEN: electricInfo.properties.token,
+      PUBLIC_DATABASE_ID: electricInfo.properties.id,
+      PUBLIC_ELECTRIC_URL: ELECTRIC_URL,
+      PUBLIC_API_URL: worker.url as unknown as string,
     },
   });
 }

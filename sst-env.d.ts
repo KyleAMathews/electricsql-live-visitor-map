@@ -6,6 +6,23 @@ import "sst"
 export {}
 declare module "sst" {
   export interface Resource {
+    "ElectricUrl": {
+      "type": "sst.sst.Linkable"
+      "url": string
+    }
+    "VisitorMapAPI": {
+      "type": "sst.cloudflare.Worker"
+      "url": string
+    }
+    "databaseUriLink": {
+      "type": "sst.sst.Linkable"
+      "url": string
+    }
+    "electricInfo": {
+      "database_id": string
+      "token": string
+      "type": "sst.sst.Linkable"
+    }
     "visitormap": {
       "type": "sst.aws.Astro"
       "url": string

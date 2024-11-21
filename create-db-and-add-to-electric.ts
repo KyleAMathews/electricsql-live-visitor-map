@@ -16,8 +16,22 @@ export function createExampleDbAndAddtoElectric({ name }: { name: string }) {
   const databaseUri = getNeonDbUri(project, db);
 
   const electricInfo = databaseUri.apply((uri) => addDatabaseToElectric(uri));
+  electricInfo.apply(console.log);
 
-  return { electricInfo, databaseUri };
+  const electricInfoLink = new sst.Linkable(`electricInfo`, {
+    properties: {
+      database_id: electricInfo.id,
+      token: electricInfo.token,
+    },
+  });
+
+  const databaseUriLink = new sst.Linkable(`databaseUriLink`, {
+    properties: {
+      url: databaseUri,
+    },
+  });
+
+  return { electricInfo: electricInfoLink, databaseUri: databaseUriLink };
 }
 
 function getNeonDbUri(

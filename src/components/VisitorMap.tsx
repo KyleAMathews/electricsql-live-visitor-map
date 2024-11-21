@@ -145,7 +145,7 @@ export const VisitorMap: React.FC = () => {
   const [zoom, setZoom] = useState(1);
   const [center, setCenter] = useState<[number, number]>([0, 0]);
   const { data: visitors = [], isLoading } = useShape<Visitor>({
-    url: "http://localhost:5010/api/visitors/shape",
+    url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
 
   const clusters = useMemo(() => createClusters(visitors, zoom), [visitors, zoom]);
@@ -162,7 +162,7 @@ export const VisitorMap: React.FC = () => {
         .then(res => res.json())
         .then(data => {
           // Record the visit with geolocation data
-          fetch("http://localhost:5010/api/record-visit", {
+          fetch(`${import.meta.env.PUBLIC_API_URL}/api/record-visit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

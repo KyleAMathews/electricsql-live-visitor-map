@@ -1,14 +1,15 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import { sql } from "../src/lib/db";
-import { v4 as uuidv4 } from "uuid";
-import { z } from "zod";
-import fetch, { Headers, Response } from "node-fetch-native";
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { z } from 'zod'
+import { zValidator } from '@hono/zod-validator'
+import { v4 as uuidv4 } from "uuid"
+import postgres from 'postgres'
+import { Resource } from "sst"
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const app = new Hono()
+
+// Enable CORS
+app.use('*', cors())
 
 const visitSchema = z.object({
   visitorId: z.string().uuid(),
@@ -16,85 +17,64 @@ const visitSchema = z.object({
   longitude: z.number().min(-180).max(180),
   country: z.string().min(1).optional(),
   city: z.string().min(1).optional(),
-});
+})
 
 // Shape API endpoint
-app.get("/api/visitors/shape", async (req, res) => {
+app.get('/api/visitors/shape', async (c) => {
   try {
     const originUrl = new URL(
-      process.env.PRIVATE_ELECTRIC_URL
-        ? `${process.env.PRIVATE_ELECTRIC_URL}/v1/shape`
-        : `http://localhost:5133/v1/shape`,
-    );
+      Resource.ElectricUrl.url + '/v1/shape'
+    )
 
-    originUrl.searchParams.set("table", "visitors");
+    originUrl.searchParams.set('table', 'visitors')
 
     // Copy all search parameters from the original request
-    for (const [key, value] of Object.entries(req.query)) {
-      originUrl.searchParams.set(key, value as string);
+    const query = c.req.query()
+    for (const [key, value] of Object.entries(query)) {
+      originUrl.searchParams.set(key, value)
     }
 
-    if (process.env.PRIVATE_DATABASE_ID) {
-      originUrl.searchParams.set(
-        "database_id",
-        process.env.PRIVATE_DATABASE_ID,
-      );
-    }
+    originUrl.searchParams.set('database_id', Resource.electricInfo.database_id)
+    originUrl.searchParams.set('token', Resource.electricInfo.token)
 
     // Forward the request to Electric
-    const headers = new Headers(req.headers as any);
-    headers.delete("host");
+    const headers = new Headers(c.req.raw.headers)
+    headers.delete('host')
 
-    if (process.env.PRIVATE_ELECTRIC_TOKEN) {
-      originUrl.searchParams.set("token", process.env.PRIVATE_ELECTRIC_TOKEN);
-    }
+    const response = await fetch(originUrl.toString(), { headers })
+    const buffer = await response.arrayBuffer()
 
-    let response = await fetch(originUrl.toString(), { headers });
-
-    // Copy all headers
-    for (const [key, value] of response.headers.entries()) {
-      res.setHeader(key, value);
-    }
-
-    // Set the status
-    res.status(response.status);
-
-    // Get the raw buffer and send it
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    return new Response(buffer, {
+      status: response.status,
+      headers: response.headers
+    })
   } catch (error) {
-    console.error("Error proxying to Electric:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error proxying to Electric:', error)
+    return c.json({ error: 'Internal server error' }, 500)
   }
-});
+})
 
 // Record visit endpoint
-app.post("/api/record-visit", async (req, res) => {
+app.post('/api/record-visit', zValidator('json', visitSchema), async (c) => {
   try {
-    const result = visitSchema.safeParse(req.body);
+    const { visitorId, latitude, longitude, country, city } = c.req.valid('json')
 
-    if (!result.success) {
-      return res.status(400).json({
-        error: "Invalid data",
-        details: result.error.issues,
-      });
-    }
-
-    const { visitorId, latitude, longitude, country, city } = result.data;
+    // Create a new postgres client for each request
+    const sql = postgres(Resource.databaseUriLink.url)
 
     await sql`
       INSERT INTO visitors (id, visitor_id, latitude, longitude, country, city, last_seen)
       VALUES (${uuidv4()}, ${visitorId}, ${latitude}, ${longitude}, ${country}, ${city}, NOW())
-    `;
+    `
 
-    res.json({ success: true });
+    await sql.end()
+    return c.json({ success: true })
   } catch (error) {
-    console.error("Error recording visit:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error recording visit:', error)
+    return c.json({ error: 'Internal server error' }, 500)
   }
-});
+})
 
-const PORT = process.env.PORT || 5010;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+export default {
+  fetch: app.fetch,
+}
