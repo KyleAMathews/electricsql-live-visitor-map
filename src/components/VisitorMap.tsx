@@ -563,6 +563,7 @@ function VisitorMap() {
       <React.Suspense fallback={<div>Loading globe visualization...</div>}>
         <Globe
           ref={globeRef}
+          onGlobeReady={() => globeRef.current?.pointOfView({ lng: -90, lat: 30 })}
           globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
           bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
           customLayerData={pointData}
