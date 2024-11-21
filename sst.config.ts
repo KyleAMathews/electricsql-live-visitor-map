@@ -65,7 +65,7 @@ function deploySite(
 ) {
   return new sst.aws.Astro("visitormap", {
     domain: {
-      name: `visitor-map${$app.stage === `production` ? `` : `-stage-${$app.stage}`}.electric-sql.com`,
+      name: `live-visitor-map${$app.stage === `production` ? `` : `-stage-${$app.stage}`}.electric-sql.com`,
       dns: sst.cloudflare.dns(),
     },
     dev: {
