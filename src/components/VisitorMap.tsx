@@ -186,13 +186,13 @@ export const VisitorMap: React.FC = () => {
   return (
     <div className="w-full h-screen bg-gray-900 relative">
       {/* Title */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-6 py-3 rounded-lg text-white shadow-lg">
-        <h1 className="text-xl font-bold">Live Visitor Tracker — Powered by ElectricSQL</h1>
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 sm:px-6 py-2 sm:py-3 rounded-lg text-white shadow-lg max-w-[90%] text-center">
+        <h1 className="text-lg sm:text-xl font-bold">Live Visitor Tracker — Powered by ElectricSQL</h1>
       </div>
 
-      {/* Stats Panel */}
-      <div className="absolute top-4 left-4 bg-gray-800 p-4 rounded-lg text-white shadow-lg">
-        <div className="text-lg">Total Visitors: {visitors.length}</div>
+      {/* Stats Panel - Moved to bottom center */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 py-2 rounded-lg text-white shadow-lg">
+        <div className="text-base sm:text-lg font-medium">Total Visitors: {visitors.length}</div>
       </div>
 
       <Tooltip id="visitor-tooltip" />
