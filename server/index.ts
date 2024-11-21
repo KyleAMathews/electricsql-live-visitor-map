@@ -27,6 +27,8 @@ app.get('/api/visitors/shape', async (c) => {
     )
 
     originUrl.searchParams.set('table', 'visitors')
+    originUrl.searchParams.set('database_id', Resource.electricInfo.database_id)
+    originUrl.searchParams.set('token', Resource.electricInfo.token)
 
     // Copy all search parameters from the original request
     const query = c.req.query()
@@ -34,20 +36,16 @@ app.get('/api/visitors/shape', async (c) => {
       originUrl.searchParams.set(key, value)
     }
 
-    originUrl.searchParams.set('database_id', Resource.electricInfo.database_id)
-    originUrl.searchParams.set('token', Resource.electricInfo.token)
+    // Create a copy of the original headers to include in the fetch to the upstream.
+    const requestClone = new Request(c.req.raw)
+    const headersClone = new Headers(requestClone.headers)
 
-    // Forward the request to Electric
-    const headers = new Headers(c.req.raw.headers)
-    headers.delete('host')
-
-    const response = await fetch(originUrl.toString(), { headers })
-    const buffer = await response.arrayBuffer()
-
-    return new Response(buffer, {
-      status: response.status,
-      headers: response.headers
+    const response = await fetch(originUrl.toString(), {
+      headers: headersClone,
+      cf: { cacheEverything: true },
     })
+
+    return response
   } catch (error) {
     console.error('Error proxying to Electric:', error)
     return c.json({ error: 'Internal server error' }, 500)
