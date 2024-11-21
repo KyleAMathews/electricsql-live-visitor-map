@@ -611,15 +611,10 @@ function VisitorMap() {
             zIndex: 1000,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", color: "#ffffff", textShadow: "0 0 10px rgba(255,255,255,0.5)" }}>Cluster Info</h3>
-          <p style={{ margin: "5px 0" }}>Visitors: {selectedCluster.visitors.length}</p>
-          <p style={{ margin: "5px 0" }}>Total Visits: {selectedCluster.totalVisits}</p>
-          <p style={{ margin: "5px 0" }}>
-            Cities:{" "}
-            {Array.from(
-              new Set(selectedCluster.visitors.map((v) => v.city)),
-            ).join(", ")}
-          </p>
+          <h3 style={{ margin: "0 0 15px 0", color: "#ffffff", textShadow: "0 0 10px rgba(255,255,255,0.5)" }}>
+            {Array.from(new Set(selectedCluster.visitors.map((v) => v.city))).join(", ")}
+          </h3>
+          <p style={{ margin: "5px 0" }}>Total Visits: {selectedCluster.visitors.length}</p>
           <button 
             onClick={() => setSelectedCluster(null)}
             style={{
