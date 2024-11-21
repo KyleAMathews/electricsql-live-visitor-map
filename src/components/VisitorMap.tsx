@@ -3,6 +3,7 @@ import { Tooltip } from "react-tooltip";
 import { useShape } from "@electric-sql/react";
 import { v4 as uuidv4 } from "uuid";
 import * as THREE from 'three';
+import * as TWEEN from '@tweenjs/tween.js';
 import "../styles/animations.css";
 
 // Dynamically import Globe to ensure it only loads on the client
@@ -129,97 +130,103 @@ function VisitorMap() {
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
 
+  // Monitor visitors data changes
+  useEffect(() => {
+    console.log("Visitors data updated:", {
+      count: visitors.length,
+      visitors: visitors.map(v => ({
+        id: v.id,
+        timestamp: v.timestamp,
+        latitude: v.latitude,
+        longitude: v.longitude
+      }))
+    });
+  }, [visitors]);
+
+  // Create clusters from visitors
   const clusters = useMemo(
-    () => createClusters(visitors, 1),
+    () => {
+      console.log("Creating clusters from visitors:", visitors);
+      return createClusters(visitors, 1);
+    },
     [visitors],
   );
 
   const pointData = useMemo(() => {
-    console.log("Visitors data:", visitors);
+    console.log("Recalculating point data");
+    console.log("Current time:", Date.now());
     console.log("Clusters:", clusters);
+    
     return clusters.map(cluster => {
-      const size = Math.min(20, Math.max(5, Math.sqrt(cluster.totalVisits) * 3));
-      const isNew = cluster.lastVisitTime && Date.now() - cluster.lastVisitTime < 5000;
+      const baseSize = 0.3; // Increased base size of spike (10x larger)
+      const height = Math.max(0.5, Math.log2(cluster.totalVisits) * 1.5); // More reasonable height scaling
+      const timeSinceVisit = cluster.lastVisitTime ? Date.now() - cluster.lastVisitTime : Infinity;
+      const isNew = timeSinceVisit < 30000; // 30 seconds
+      
+      console.log("Cluster analysis:", {
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
+        lastVisitTime: cluster.lastVisitTime,
+        timeSinceVisit,
+        isNew,
+        totalVisits: cluster.totalVisits,
+        height
+      });
+
       const point = {
         lat: cluster.latitude,
         lng: cluster.longitude,
-        size: size / 5, // Increased from /15 to /5 for larger base size
-        height: Math.max(0.5, Math.log2(cluster.totalVisits) * 1), // Increased height multiplier
+        size: baseSize,
+        height,
         color: isNew ? '#ff3333' : '#ffaa00',
         emissive: isNew ? '#ff0000' : '#ff6600',
         cluster: cluster,
-        intensity: isNew ? 2 : 1
+        intensity: isNew ? 2 : 1,
+        isNew,
+        visitTime: cluster.lastVisitTime,
+        timeSinceVisit
       };
+      
       console.log("Created point:", point);
       return point;
     });
   }, [clusters]);
 
-  // Custom render function for 3D markers
-  const customRender = useCallback((marker: any) => {
-    console.log("Rendering marker:", marker);
-    
-    // Create a group to hold our tower parts
-    const group = new THREE.Group();
+  // Effect to handle new visitor recording
+  useEffect(() => {
+    const recordVisit = async () => {
+      if (!visitorId) return;
+      
+      try {
+        console.log("Recording visit for visitor:", visitorId);
+        const response = await fetch(`${import.meta.env.PUBLIC_API_URL}/api/record-visit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            visitorId,
+            timestamp: Date.now(),
+            // Add any other relevant data
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to record visit');
+        }
+        
+        console.log("Visit recorded successfully");
+      } catch (error) {
+        console.error("Error recording visit:", error);
+      }
+    };
 
-    // Create the base (wider and shorter cylinder)
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.6, 0.3, 6),
-      new THREE.MeshPhongMaterial({
-        color: new THREE.Color(marker.color),
-        emissive: new THREE.Color(marker.emissive),
-        emissiveIntensity: marker.intensity,
-        transparent: true,
-        opacity: 0.9,
-        shininess: 100
-      })
-    );
-    group.add(base);
-
-    // Create the tower (thinner and taller cylinder)
-    const tower = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.4, 1, 6),
-      new THREE.MeshPhongMaterial({
-        color: new THREE.Color(marker.color),
-        emissive: new THREE.Color(marker.emissive),
-        emissiveIntensity: marker.intensity,
-        transparent: true,
-        opacity: 0.9,
-        shininess: 100
-      })
-    );
-    tower.position.y = 0.65;
-    group.add(tower);
-
-    // Create the top (glowing sphere)
-    const top = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 8, 8),
-      new THREE.MeshPhongMaterial({
-        color: new THREE.Color(marker.emissive),
-        emissive: new THREE.Color(marker.emissive),
-        emissiveIntensity: marker.intensity * 1.5,
-        transparent: true,
-        opacity: 0.9,
-        shininess: 100
-      })
-    );
-    top.position.y = 1.15;
-    group.add(top);
-
-    // Add point lights for glow effect
-    const light1 = new THREE.PointLight(marker.color, 2, marker.size * 4);
-    light1.position.y = marker.height / 2;
-    group.add(light1);
-
-    const light2 = new THREE.PointLight(marker.emissive, 1, marker.size * 2);
-    light2.position.y = marker.height;
-    group.add(light2);
-
-    // Scale the entire group
-    group.scale.set(marker.size, marker.height, marker.size);
-
-    return group;
-  }, []);
+    // Record visit when the component mounts
+    if (visitorId && isMounted) {
+      console.log("Component mounted, recording visit");
+      recordVisit();
+    }
+  }, [visitorId, isMounted]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -227,7 +234,16 @@ function VisitorMap() {
   }, []);
 
   useEffect(() => {
-    if (globeRef.current) {
+    let animationFrameId: number;
+    
+    const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+      TWEEN.update();
+    };
+    
+    if (isMounted && globeRef.current) {
+      animate();
+      
       const controls = (globeRef.current as any).controls();
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.5;
@@ -250,24 +266,222 @@ function VisitorMap() {
       bottomLight.position.set(0, -500, 0);
       globe.add(bottomLight);
     }
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
   }, [isMounted]);
 
-  useEffect(() => {
-    // Record visit when the component mounts
-    if (visitorId) {
-      fetch(`${import.meta.env.PUBLIC_API_URL}/api/record-visit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          visitorId: visitorId,
-        }),
-      }).catch(error => {
-        console.error("Error recording visit:", error);
+  // Custom render function for 3D markers
+  const customRender = useCallback((marker: any) => {
+    console.log("Rendering marker:", {
+      lat: marker.lat,
+      lng: marker.lng,
+      isNew: marker.isNew,
+      timeSinceVisit: marker.timeSinceVisit,
+      visitTime: marker.visitTime
+    });
+    
+    // Create a group to hold our spike
+    const group = new THREE.Group();
+
+    // Create a spike (cone)
+    const spikeGeometry = new THREE.ConeGeometry(
+      marker.size,    // radius at base
+      marker.height,  // height
+      8,             // segments
+      1,             // height segments
+      false          // open ended
+    );
+    const spikeMaterial = new THREE.MeshPhongMaterial({
+      color: marker.color,
+      emissive: marker.emissive,
+      emissiveIntensity: marker.intensity,
+      transparent: true,
+      opacity: 0.8,
+      shininess: 100,
+      side: THREE.DoubleSide
+    });
+    const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+    
+    // Center the spike at its base
+    spike.position.y = marker.height / 2;
+    
+    // Add point light for glow effect
+    const light = new THREE.PointLight(marker.color, marker.intensity * 2, marker.height * 10);
+    light.position.y = marker.height / 2;
+
+    group.add(spike);
+    group.add(light);
+
+    // Add hover effect
+    const onHover = (hovering: boolean) => {
+      if (!group) return;
+
+      const scale = hovering ? 1.2 : 1.0;
+      const duration = 200;
+      const easing = TWEEN.Easing.Cubic.Out;
+
+      // Scale tween
+      new TWEEN.Tween(group.scale)
+        .to({ 
+          x: scale, 
+          y: scale, 
+          z: scale 
+        }, duration)
+        .easing(easing)
+        .start();
+
+      // Light intensity tween
+      if (light) {
+        new TWEEN.Tween(light)
+          .to({ intensity: hovering ? marker.intensity * 4 : marker.intensity * 2 }, duration)
+          .easing(easing)
+          .start();
+      }
+    };
+
+    // Store the hover handler on the group
+    (group as any).__onHover = onHover;
+
+    // Set initial scale
+    group.scale.set(1, 1, 1);
+
+    // Add a pulsing animation for new visitors
+    let animationFrameId: number | null = null;
+    if (marker.isNew) {
+      console.log("Starting pulse animation for new visitor", {
+        lat: marker.lat,
+        lng: marker.lng,
+        timeSinceVisit: marker.timeSinceVisit
       });
+      
+      const startTime = Date.now();
+      const ANIMATION_DURATION = 30000; // 30 seconds
+      const FADE_DURATION = 5000; // 5 second fade out
+      
+      // Create color objects for interpolation
+      const startColor = new THREE.Color('#ffaa00');
+      const peakColor = new THREE.Color('#ff3333');
+      const startEmissive = new THREE.Color('#ff6600');
+      const peakEmissive = new THREE.Color('#ff0000');
+      const tempColor = new THREE.Color();
+      const tempEmissive = new THREE.Color();
+      
+      const animate = () => {
+        try {
+          const elapsedTime = Date.now() - startTime;
+          const timeLeft = ANIMATION_DURATION - elapsedTime;
+          
+          // Calculate fade out factor (1 -> 0 over FADE_DURATION)
+          const fadeOutFactor = timeLeft < FADE_DURATION ? timeLeft / FADE_DURATION : 1;
+          
+          // Slower, more dramatic pulsing
+          const pulse = Math.sin(elapsedTime * 0.003) * 0.3 + 1.3; // Pulsing between 1.0 and 1.6
+          const finalPulse = 1 + (pulse - 1) * fadeOutFactor; // Smoothly reduce pulse intensity
+
+          // Calculate color interpolation factor (0 to 1 to 0)
+          const colorPulse = Math.sin(elapsedTime * 0.003) * 0.5 + 0.5; // Oscillates between 0 and 1
+          const finalColorFactor = colorPulse * fadeOutFactor;
+
+          // Interpolate colors
+          tempColor.copy(startColor).lerp(peakColor, finalColorFactor);
+          tempEmissive.copy(startEmissive).lerp(peakEmissive, finalColorFactor);
+
+          // Log animation state periodically
+          if (elapsedTime % 1000 < 16) { // Log roughly every second
+            console.log("Animation state:", {
+              timeLeft,
+              fadeOutFactor,
+              pulse,
+              finalPulse,
+              colorPulse,
+              finalColorFactor,
+              lat: marker.lat,
+              lng: marker.lng
+            });
+          }
+
+          // Update spike material and scale
+          if (spike?.material instanceof THREE.MeshPhongMaterial) {
+            spike.material.emissiveIntensity = marker.intensity * finalPulse;
+            spike.material.opacity = Math.min(0.8, 0.6 + finalPulse * 0.2);
+            spike.material.color.copy(tempColor);
+            spike.material.emissive.copy(tempEmissive);
+            spike.material.needsUpdate = true;
+          }
+          
+          // Scale the spike slightly with the pulse
+          group.scale.set(finalPulse, 1, finalPulse);
+
+          if (light) {
+            // Update light intensity, distance, and color
+            light.intensity = marker.intensity * 3 * finalPulse;
+            light.distance = marker.height * (10 + finalPulse * 5);
+            light.color.copy(tempColor);
+          }
+
+          if (timeLeft > 0) {
+            animationFrameId = requestAnimationFrame(animate);
+          } else {
+            console.log("Ending pulse animation");
+            // Reset to non-new state
+            if (spike?.material instanceof THREE.MeshPhongMaterial) {
+              spike.material.color.copy(startColor);
+              spike.material.emissive.copy(startEmissive);
+              spike.material.emissiveIntensity = 1;
+              spike.material.opacity = 0.8;
+            }
+            group.scale.set(1, 1, 1);
+            if (light) {
+              light.color.copy(startColor);
+              light.intensity = 2;
+            }
+          }
+        } catch (error) {
+          console.error("Error in animation:", error);
+          if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+          }
+        }
+      };
+      animate();
     }
-  }, [visitorId]);
+
+    // Cleanup function
+    (group as any).__cleanup = () => {
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      // Dispose of geometries and materials
+      spikeGeometry.dispose();
+      spikeMaterial.dispose();
+    };
+
+    return group;
+  }, []);
+
+  // Custom update function for Three.js objects
+  const customThreeObjectUpdate = useCallback((obj: THREE.Object3D | undefined, d: any) => {
+    if (!obj || !d) return;
+
+    try {
+      // Update position if needed
+      if (typeof d.lat === 'number' && typeof d.lng === 'number' && globeRef.current) {
+        const coords = (globeRef.current as any).getCoords(d.lat, d.lng, 0.1);
+        if (coords) {
+          obj.position.set(coords.x, coords.y, coords.z);
+          // Make the object point outward from the globe center
+          obj.lookAt(0, 0, 0);
+          obj.rotateX(Math.PI / 2);
+        }
+      }
+    } catch (error) {
+      console.error("Error updating object:", error);
+    }
+  }, []);
 
   if (!isMounted) {
     return <div>Loading globe...</div>;
@@ -294,21 +508,30 @@ function VisitorMap() {
           bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
           customLayerData={pointData}
           customThreeObject={customRender}
-          customThreeObjectUpdate={(obj, d) => {
-            console.log("Updating object position:", d);
-            const coords = (globeRef.current as any).getCoords(d.lat, d.lng, 0.1); // Fixed altitude
-            Object.assign(obj.position, coords);
-            // Make the object point outward from the globe center
-            obj.lookAt(0, 0, 0);
-            obj.rotateX(Math.PI / 2); // Keep it standing upright
+          customThreeObjectUpdate={customThreeObjectUpdate}
+          onCustomLayerHover={(obj: any) => {
+            if (obj && (obj as any).__onHover) {
+              (obj as any).__onHover(true);
+            } else {
+              // Find and unhover any previously hovered objects
+              const globe = globeRef.current;
+              if (globe) {
+                const scene = (globe as any).scene();
+                scene.traverse((object: any) => {
+                  if (object.__onHover) {
+                    object.__onHover(false);
+                  }
+                });
+              }
+            }
           }}
-          atmosphereColor="#001133"
-          atmosphereAltitude={0.25}
-          backgroundColor="#000000"
           onCustomLayerClick={(obj: any, event: any) => {
             console.log("Clicked object:", obj);
             setSelectedCluster(obj.cluster);
           }}
+          atmosphereColor="#001133"
+          atmosphereAltitude={0.25}
+          backgroundColor="#000000"
         />
       </React.Suspense>
       {selectedCluster && (
