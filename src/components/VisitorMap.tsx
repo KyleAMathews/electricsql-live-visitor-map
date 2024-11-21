@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as THREE from 'three';
 import * as TWEEN from '@tweenjs/tween.js';
 import "../styles/animations.css";
+import RecentVisitors from './RecentVisitors';
 
 // Dynamically import Globe to ensure it only loads on the client
 const Globe = React.lazy(() => import('react-globe.gl'));
@@ -548,6 +549,7 @@ function VisitorMap() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <RecentVisitors visitors={visitors} />
       <div
         dangerouslySetInnerHTML={{ __html: tooltipContent }}
         style={tooltipStyle as any}
