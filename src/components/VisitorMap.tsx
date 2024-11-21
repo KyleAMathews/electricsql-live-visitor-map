@@ -504,8 +504,8 @@ function VisitorMap() {
   const tooltipStyle = {
     position: 'absolute',
     top: tooltipPosition.y + 'px',
-    left: tooltipPosition.x + 'px',
-    transform: 'translate(-50%, -100%)',
+    left: '20px',
+    transform: 'translate(0, -100%)',
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     color: 'white',
     padding: '8px 12px',
@@ -549,11 +549,17 @@ function VisitorMap() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div className="title">
+        ElectricSQL Live Visitors Map
+      </div>
       <RecentVisitors visitors={visitors} />
       <div
         dangerouslySetInnerHTML={{ __html: tooltipContent }}
         style={tooltipStyle as any}
       />
+      <div className="visitor-count">
+        {visitors.length} total visitors
+      </div>
       <React.Suspense fallback={<div>Loading globe visualization...</div>}>
         <Globe
           ref={globeRef}
@@ -591,18 +597,20 @@ function VisitorMap() {
         <div
           style={{
             position: "absolute",
-            top: "10px",
-            right: "10px",
+            top: "20px",
+            left: "20px",
             background: "rgba(0,0,0,0.8)",
             padding: "20px",
             borderRadius: "10px",
             color: "#ffffff",
             backdropFilter: "blur(10px)",
             border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+            boxShadow: "0 0 20px rgba(255,255,255,0.1)",
+            maxWidth: "300px",
+            zIndex: 1000,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", color: "#ffffff" }}>Cluster Info</h3>
+          <h3 style={{ margin: "0 0 15px 0", color: "#ffffff", textShadow: "0 0 10px rgba(255,255,255,0.5)" }}>Cluster Info</h3>
           <p style={{ margin: "5px 0" }}>Visitors: {selectedCluster.visitors.length}</p>
           <p style={{ margin: "5px 0" }}>Total Visits: {selectedCluster.totalVisits}</p>
           <p style={{ margin: "5px 0" }}>
@@ -627,6 +635,45 @@ function VisitorMap() {
           </button>
         </div>
       )}
+      <style jsx>{`
+        .title {
+          position: absolute;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #fff;
+          font-size: 24px;
+          font-weight: 500;
+          text-align: center;
+          z-index: 1000;
+          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+          letter-spacing: 1px;
+        }
+
+        @media (max-width: 768px) {
+          .title {
+            font-size: 16px;
+            top: 15px;
+          }
+        }
+
+        .visitor-count {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #fff;
+          font-size: 16px;
+          text-align: center;
+          z-index: 1000;
+          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+          background: rgba(255, 255, 255, 0.05);
+          padding: 8px 16px;
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(5px);
+        }
+      `}</style>
     </div>
   );
 }

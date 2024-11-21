@@ -56,6 +56,12 @@ const RecentVisitors: React.FC<RecentVisitorsProps> = ({ visitors }) => {
           text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
 
+        @media (max-width: 768px) {
+          .recent-visitors-panel {
+            display: none;
+          }
+        }
+
         h3 {
           margin: 0 0 12px 0;
           font-size: 16px;
