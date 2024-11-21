@@ -126,6 +126,9 @@ function VisitorMap() {
   const [isMounted, setIsMounted] = useState(false);
   const [visitorId, setVisitorId] = useState("");
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
+  const [tooltipContent, setTooltipContent] = useState('');
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [showTooltip, setShowTooltip] = useState(false);
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
@@ -341,6 +344,20 @@ function VisitorMap() {
           .easing(easing)
           .start();
       }
+
+      // Update tooltip
+      if (hovering) {
+        const location = marker.cluster.city 
+          ? `${marker.cluster.city}, ${marker.cluster.country}`
+          : marker.cluster.country || 'Unknown Location';
+        
+        setTooltipContent(
+          `${location}<br/>${marker.cluster.totalVisits} visitor${marker.cluster.totalVisits !== 1 ? 's' : ''}`
+        );
+        setShowTooltip(true);
+      } else {
+        setShowTooltip(false);
+      }
     };
 
     // Store the hover handler on the group
@@ -483,6 +500,36 @@ function VisitorMap() {
     }
   }, []);
 
+  const tooltipStyle = {
+    position: 'absolute',
+    top: tooltipPosition.y + 'px',
+    left: tooltipPosition.x + 'px',
+    transform: 'translate(-50%, -100%)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    color: 'white',
+    padding: '8px 12px',
+    borderRadius: '4px',
+    fontSize: '14px',
+    pointerEvents: 'none',
+    zIndex: 1000,
+    display: showTooltip ? 'block' : 'none',
+    whiteSpace: 'nowrap',
+  };
+
+  useEffect(() => {
+    if (globeRef.current) {
+      globeRef.current.pointOfView({ lat: 39.6, lng: -98.5, altitude: 2.5 });
+      
+      // Add mousemove handler for tooltip positioning
+      const handleMouseMove = (event) => {
+        setTooltipPosition({ x: event.clientX, y: event.clientY });
+      };
+      
+      window.addEventListener('mousemove', handleMouseMove);
+      return () => window.removeEventListener('mousemove', handleMouseMove);
+    }
+  }, []);
+
   if (!isMounted) {
     return <div>Loading globe...</div>;
   }
@@ -500,7 +547,11 @@ function VisitorMap() {
   }
 
   return (
-    <div style={{ height: "100vh", width: "100%" }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div
+        dangerouslySetInnerHTML={{ __html: tooltipContent }}
+        style={tooltipStyle as any}
+      />
       <React.Suspense fallback={<div>Loading globe visualization...</div>}>
         <Globe
           ref={globeRef}
