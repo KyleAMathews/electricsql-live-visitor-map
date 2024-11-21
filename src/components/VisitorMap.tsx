@@ -1,15 +1,12 @@
-import React, { useEffect, useState, useMemo } from "react";
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Marker,
-  ZoomableGroup,
-} from "react-simple-maps";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Tooltip } from "react-tooltip";
 import { useShape } from "@electric-sql/react";
 import { v4 as uuidv4 } from "uuid";
+import * as THREE from 'three';
 import "../styles/animations.css";
+
+// Dynamically import Globe to ensure it only loads on the client
+const Globe = React.lazy(() => import('react-globe.gl'));
 
 interface Visitor {
   id: string;
@@ -114,20 +111,6 @@ function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
   return clusters;
 }
 
-function getMarkerSize(totalVisits: number, zoom: number): number {
-  // Base size calculation
-  const baseSize = Math.max(4, Math.min(20, Math.log2(totalVisits) * 2));
-  // Adjust for zoom to maintain screen-relative size
-  return baseSize / zoom;
-}
-
-function getClusterTooltip(cluster: Cluster): string {
-  const cities = [...new Set(cluster.visitors.map((v) => v.city))];
-  const countries = [...new Set(cluster.visitors.map((v) => v.country))];
-  return `${cluster.visitors.length} visitor${cluster.visitors.length === 1 ? "" : "s"
-    } from ${cities.join(", ")}, ${countries.join(", ")}`;
-}
-
 function getVisitorId(): string {
   let id = localStorage.getItem("visitorId");
   if (!id) {
@@ -137,25 +120,140 @@ function getVisitorId(): string {
   return id;
 }
 
-const geoUrl = "https://unpkg.com/world-atlas@2.0.2/countries-110m.json";
-
-export const VisitorMap: React.FC = () => {
+function VisitorMap() {
+  const globeRef = useRef();
+  const [isMounted, setIsMounted] = useState(false);
   const [visitorId, setVisitorId] = useState("");
-  const [tooltipContent, setTooltipContent] = useState("");
-  const [zoom, setZoom] = useState(1);
-  const [center, setCenter] = useState<[number, number]>([0, 0]);
+  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
 
-  const clusters = useMemo(() => createClusters(visitors, zoom), [visitors, zoom]);
+  const clusters = useMemo(
+    () => createClusters(visitors, 1),
+    [visitors],
+  );
+
+  const pointData = useMemo(() => {
+    console.log("Visitors data:", visitors);
+    console.log("Clusters:", clusters);
+    return clusters.map(cluster => {
+      const size = Math.min(20, Math.max(5, Math.sqrt(cluster.totalVisits) * 3));
+      const isNew = cluster.lastVisitTime && Date.now() - cluster.lastVisitTime < 5000;
+      const point = {
+        lat: cluster.latitude,
+        lng: cluster.longitude,
+        size: size / 5, // Increased from /15 to /5 for larger base size
+        height: Math.max(0.5, Math.log2(cluster.totalVisits) * 1), // Increased height multiplier
+        color: isNew ? '#ff3333' : '#ffaa00',
+        emissive: isNew ? '#ff0000' : '#ff6600',
+        cluster: cluster,
+        intensity: isNew ? 2 : 1
+      };
+      console.log("Created point:", point);
+      return point;
+    });
+  }, [clusters]);
+
+  // Custom render function for 3D markers
+  const customRender = useCallback((marker: any) => {
+    console.log("Rendering marker:", marker);
+    
+    // Create a group to hold our tower parts
+    const group = new THREE.Group();
+
+    // Create the base (wider and shorter cylinder)
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.4, 0.6, 0.3, 6),
+      new THREE.MeshPhongMaterial({
+        color: new THREE.Color(marker.color),
+        emissive: new THREE.Color(marker.emissive),
+        emissiveIntensity: marker.intensity,
+        transparent: true,
+        opacity: 0.9,
+        shininess: 100
+      })
+    );
+    group.add(base);
+
+    // Create the tower (thinner and taller cylinder)
+    const tower = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.4, 1, 6),
+      new THREE.MeshPhongMaterial({
+        color: new THREE.Color(marker.color),
+        emissive: new THREE.Color(marker.emissive),
+        emissiveIntensity: marker.intensity,
+        transparent: true,
+        opacity: 0.9,
+        shininess: 100
+      })
+    );
+    tower.position.y = 0.65;
+    group.add(tower);
+
+    // Create the top (glowing sphere)
+    const top = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 8, 8),
+      new THREE.MeshPhongMaterial({
+        color: new THREE.Color(marker.emissive),
+        emissive: new THREE.Color(marker.emissive),
+        emissiveIntensity: marker.intensity * 1.5,
+        transparent: true,
+        opacity: 0.9,
+        shininess: 100
+      })
+    );
+    top.position.y = 1.15;
+    group.add(top);
+
+    // Add point lights for glow effect
+    const light1 = new THREE.PointLight(marker.color, 2, marker.size * 4);
+    light1.position.y = marker.height / 2;
+    group.add(light1);
+
+    const light2 = new THREE.PointLight(marker.emissive, 1, marker.size * 2);
+    light2.position.y = marker.height;
+    group.add(light2);
+
+    // Scale the entire group
+    group.scale.set(marker.size, marker.height, marker.size);
+
+    return group;
+  }, []);
 
   useEffect(() => {
+    setIsMounted(true);
     setVisitorId(getVisitorId());
   }, []);
 
-  // Record visit when the component mounts
   useEffect(() => {
+    if (globeRef.current) {
+      const controls = (globeRef.current as any).controls();
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.5;
+      
+      // Enhance the globe's appearance
+      const globe = (globeRef.current as any).scene();
+      globe.fog = new THREE.Fog('#000000', 400, 2000);
+      
+      // Add ambient light for better visibility
+      const ambientLight = new THREE.AmbientLight('#ffffff', 0.8);
+      globe.add(ambientLight);
+      
+      // Add directional light for better depth
+      const dirLight = new THREE.DirectionalLight('#ffffff', 1);
+      dirLight.position.set(1, 1, 1);
+      globe.add(dirLight);
+      
+      // Add a subtle blue point light from below
+      const bottomLight = new THREE.PointLight('#0066ff', 0.8, 1000);
+      bottomLight.position.set(0, -500, 0);
+      globe.add(bottomLight);
+    }
+  }, [isMounted]);
+
+  useEffect(() => {
+    // Record visit when the component mounts
     if (visitorId) {
       fetch(`${import.meta.env.PUBLIC_API_URL}/api/record-visit`, {
         method: "POST",
@@ -171,8 +269,12 @@ export const VisitorMap: React.FC = () => {
     }
   }, [visitorId]);
 
+  if (!isMounted) {
+    return <div>Loading globe...</div>;
+  }
+
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div>Loading visitor data...</div>;
   }
 
   if (!visitors) {
@@ -184,83 +286,73 @@ export const VisitorMap: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-screen bg-gray-900 relative">
-      {/* Title */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 sm:px-6 py-2 sm:py-3 rounded-lg text-white shadow-lg max-w-[90%] text-center">
-        <h1 className="text-lg sm:text-xl font-bold">Live Visitor Tracker — Powered by ElectricSQL</h1>
-      </div>
-
-      {/* Stats Panel - Moved to bottom center */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 px-4 py-2 rounded-lg text-white shadow-lg">
-        <div className="text-base sm:text-lg font-medium">Total Visitors: {visitors.length}</div>
-      </div>
-
-      <Tooltip id="visitor-tooltip" />
-      <ComposableMap projection="geoMercator" className="w-full h-full">
-        <ZoomableGroup
-          center={center}
-          zoom={zoom}
-          onMoveEnd={({ coordinates, zoom: newZoom }) => {
-            setCenter(coordinates);
-            setZoom(newZoom);
+    <div style={{ height: "100vh", width: "100%" }}>
+      <React.Suspense fallback={<div>Loading globe visualization...</div>}>
+        <Globe
+          ref={globeRef}
+          globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+          bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+          customLayerData={pointData}
+          customThreeObject={customRender}
+          customThreeObjectUpdate={(obj, d) => {
+            console.log("Updating object position:", d);
+            const coords = (globeRef.current as any).getCoords(d.lat, d.lng, 0.1); // Fixed altitude
+            Object.assign(obj.position, coords);
+            // Make the object point outward from the globe center
+            obj.lookAt(0, 0, 0);
+            obj.rotateX(Math.PI / 2); // Keep it standing upright
+          }}
+          atmosphereColor="#001133"
+          atmosphereAltitude={0.25}
+          backgroundColor="#000000"
+          onCustomLayerClick={(obj: any, event: any) => {
+            console.log("Clicked object:", obj);
+            setSelectedCluster(obj.cluster);
+          }}
+        />
+      </React.Suspense>
+      {selectedCluster && (
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            background: "rgba(0,0,0,0.8)",
+            padding: "20px",
+            borderRadius: "10px",
+            color: "#ffffff",
+            backdropFilter: "blur(10px)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
           }}
         >
-          <Geographies geography={geoUrl}>
-            {({ geographies }) =>
-              geographies.map((geo) => (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill="#2C3E50"
-                  stroke="#FFFFFF"
-                  strokeWidth={0.5}
-                  style={{
-                    default: {
-                      outline: "none",
-                    },
-                    hover: {
-                      outline: "none",
-                    },
-                    pressed: {
-                      outline: "none",
-                    },
-                  }}
-                />
-              ))
-            }
-          </Geographies>
-          {clusters.map((cluster) => {
-            const isNewVisit = cluster.lastVisitTime !== undefined;
-            const circleKey = `${cluster.latitude}-${cluster.longitude}`;
-            return (
-              <Marker
-                key={`cluster-${circleKey}`}
-                coordinates={[cluster.longitude, cluster.latitude]}
-                data-tooltip-id="visitor-tooltip"
-                data-tooltip-content={getClusterTooltip(cluster)}
-                onMouseEnter={() => {
-                  setTooltipContent(getClusterTooltip(cluster));
-                }}
-                onMouseLeave={() => {
-                  setTooltipContent("");
-                }}
-              >
-                <circle
-                  key={circleKey}
-                  r={getMarkerSize(cluster.totalVisits, zoom)}
-                  className={isNewVisit ? 'animate-visit' : ''}
-                  style={{
-                    fill: isNewVisit ? '#ff6b6b' : '#F1C40F',
-                    fillOpacity: 0.6,
-                    stroke: isNewVisit ? '#ff6b6b' : '#F1C40F',
-                    strokeWidth: 2 / zoom
-                  }}
-                />
-              </Marker>
-            );
-          })}
-        </ZoomableGroup>
-      </ComposableMap>
+          <h3 style={{ margin: "0 0 15px 0", color: "#ffffff" }}>Cluster Info</h3>
+          <p style={{ margin: "5px 0" }}>Visitors: {selectedCluster.visitors.length}</p>
+          <p style={{ margin: "5px 0" }}>Total Visits: {selectedCluster.totalVisits}</p>
+          <p style={{ margin: "5px 0" }}>
+            Cities:{" "}
+            {Array.from(
+              new Set(selectedCluster.visitors.map((v) => v.city)),
+            ).join(", ")}
+          </p>
+          <button 
+            onClick={() => setSelectedCluster(null)}
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#ffffff",
+              padding: "8px 15px",
+              borderRadius: "5px",
+              cursor: "pointer",
+              marginTop: "10px"
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
     </div>
   );
-};
+}
+
+export default VisitorMap;
