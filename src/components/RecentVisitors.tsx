@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Visitor {
@@ -17,6 +17,17 @@ interface RecentVisitorsProps {
 }
 
 const RecentVisitors: React.FC<RecentVisitorsProps> = ({ visitors }) => {
+  const [updateKey, setUpdateKey] = useState(0);
+
+  // Update timestamps every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setUpdateKey(key => key + 1);
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []); // Empty dependency array since we don't use any external values
+
   // Filter visitors from the last hour and sort by most recent
   const recentVisitors = visitors
     .filter(visitor => {
@@ -27,7 +38,7 @@ const RecentVisitors: React.FC<RecentVisitorsProps> = ({ visitors }) => {
     .sort((a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime());
 
   return (
-    <div className="recent-visitors-panel">
+    <div className="recent-visitors-panel" key={updateKey}>
       <h3>Recent Visitors</h3>
       <div className="visitors-list">
         {recentVisitors.map((visitor) => (
