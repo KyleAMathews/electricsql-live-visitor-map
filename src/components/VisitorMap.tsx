@@ -10,7 +10,18 @@ import { v4 as uuidv4 } from "uuid";
 import * as TWEEN from "@tweenjs/tween.js";
 import "../styles/animations.css";
 import RecentVisitors from "./RecentVisitors";
-import { Group, ConeGeometry, MeshPhongMaterial, Mesh, PointLight, Color, DoubleSide, AmbientLight, DirectionalLight, Fog } from "three";
+import {
+  Group,
+  ConeGeometry,
+  MeshPhongMaterial,
+  Mesh,
+  PointLight,
+  Color,
+  DoubleSide,
+  AmbientLight,
+  DirectionalLight,
+  Fog,
+} from "three";
 import type { Object3D } from "three";
 
 // Dynamically import Globe
@@ -25,7 +36,7 @@ type Visitor = {
   city: string;
   visit_count: number;
   last_seen: string;
-}
+};
 
 interface Cluster {
   latitude: number;
@@ -35,15 +46,24 @@ interface Cluster {
   lastVisitTime?: number;
 }
 
-function calculateDistance(latitude1: number, longitude1: number, latitude2: number, longitude2: number): number {
+function calculateDistance(
+  latitude1: number,
+  longitude1: number,
+  latitude2: number,
+  longitude2: number,
+): number {
   const earthRadius = 6371; // in kilometers
-  const dLat = (latitude2 - latitude1) * Math.PI / 180;
-  const dLon = (longitude2 - longitude1) * Math.PI / 180;
-  const lat1Rad = latitude1 * Math.PI / 180;
-  const lat2Rad = latitude2 * Math.PI / 180;
+  const dLat = ((latitude2 - latitude1) * Math.PI) / 180;
+  const dLon = ((longitude2 - longitude1) * Math.PI) / 180;
+  const lat1Rad = (latitude1 * Math.PI) / 180;
+  const lat2Rad = (latitude2 * Math.PI) / 180;
 
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) *
+      Math.sin(dLon / 2) *
+      Math.cos(lat1Rad) *
+      Math.cos(lat2Rad);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = earthRadius * c;
 
@@ -78,19 +98,25 @@ function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
         cluster.latitude,
         cluster.longitude,
         point.latitude,
-        point.longitude
+        point.longitude,
       );
 
       if (distance <= radius) {
         cluster.visitors.push(point.visitor);
         cluster.latitude =
-          cluster.visitors.reduce((sum, v) => sum + parseFloat(v.latitude as string), 0) /
-          cluster.visitors.length;
+          cluster.visitors.reduce(
+            (sum, v) => sum + parseFloat(v.latitude as string),
+            0,
+          ) / cluster.visitors.length;
         cluster.longitude =
-          cluster.visitors.reduce((sum, v) => sum + parseFloat(v.longitude as string), 0) /
-          cluster.visitors.length;
-        cluster.totalVisits =
-          cluster.visitors.reduce((sum, v) => sum + (v.visit_count || 1), 0);
+          cluster.visitors.reduce(
+            (sum, v) => sum + parseFloat(v.longitude as string),
+            0,
+          ) / cluster.visitors.length;
+        cluster.totalVisits = cluster.visitors.reduce(
+          (sum, v) => sum + (v.visit_count || 1),
+          0,
+        );
         addedToCluster = true;
         break;
       }
@@ -120,102 +146,81 @@ function getVisitorId(): string {
 }
 
 function VisitorMap() {
+  // Ref to the globe instance for direct manipulation
   const globeRef = useRef<any>(null);
-  const [isMounted, setIsMounted] = useState(false);
-  const [visitorId, setVisitorId] = useState("");
-  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
-  const [tooltipContent, setTooltipContent] = useState("");
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+
+  // Basic component state
+  const [isMounted, setIsMounted] = useState(false); // Tracks whether the component has finished mounting
+  const [visitorId, setVisitorId] = useState(""); // Stores the unique visitor ID
+  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null); // Stores the currently selected cluster
+  const [tooltipContent, setTooltipContent] = useState(""); // Stores the content of the tooltip
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 }); // Stores the position of the tooltip
+  const [showTooltip, setShowTooltip] = useState(false); // Tracks whether the tooltip should be shown
+  const [isMobile, setIsMobile] = useState(false); // Tracks whether the device is mobile
+  const [zoomLevel, setZoomLevel] = useState(1); // Stores the current zoom level
+
+  // Fetch visitors data from the API
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
-  });
+  }); // Fetches visitor data from the API
 
-  // Monitor visitors data changes
+  // Initialize component and set visitor ID on mount
   useEffect(() => {
-    console.log("Visitors data updated:", {
-      count: visitors.length,
-      visitors: visitors.map((v) => ({
-        id: v.id,
-        last_seen: v.last_seen,
-        latitude: v.latitude,
-        longitude: v.longitude,
-      })),
-    });
-  }, [visitors]);
+    setIsMounted(true);
+    setVisitorId(getVisitorId());
+  }, []); // Runs once on component mount to initialize state
 
-  // Update zoom level when camera moves
+  // Handle responsive layout changes
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []); // Handles window resize events to update mobile state
+
+  // Memoized event handlers
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    setTooltipPosition({ x: event.clientX, y: event.clientY });
+  }, []); // Memoizes the handleMouseMove event handler
+
+  // Initialize globe position and setup tooltip tracking
+  useEffect(() => {
+    if (globeRef.current) {
+      globeRef.current.pointOfView({ lat: 39.6, lng: -98.5, altitude: 2.5 });
+
+      // Use the memoized handler for mouse tracking
+      window.addEventListener("mousemove", handleMouseMove);
+      return () => window.removeEventListener("mousemove", handleMouseMove);
+    }
+  }, [handleMouseMove]); // Add handleMouseMove to dependencies
+
+  // Setup camera controls and zoom level tracking
   useEffect(() => {
     if (globeRef.current) {
       const camera = globeRef.current.camera();
       const handleCameraChange = () => {
-        // Calculate zoom level based on camera position
         const distance = camera.position.length();
-        const maxDistance = 1000; // Max camera distance
-        const minDistance = 200;  // Min camera distance
-        const normalizedZoom = 1 - ((distance - minDistance) / (maxDistance - minDistance));
+        const maxDistance = 1000;
+        const minDistance = 200;
+        const normalizedZoom =
+          1 - (distance - minDistance) / (maxDistance - minDistance);
         setZoomLevel(Math.max(0.1, Math.min(1, normalizedZoom)));
       };
 
-      globeRef.current.controls().addEventListener('change', handleCameraChange);
+      globeRef.current
+        .controls()
+        .addEventListener("change", handleCameraChange);
       return () => {
         if (globeRef.current) {
-          globeRef.current.controls().removeEventListener('change', handleCameraChange);
+          globeRef.current
+            .controls()
+            .removeEventListener("change", handleCameraChange);
         }
       };
     }
-  }, []);
+  }, []); // Sets up camera controls and zoom level tracking on mount
 
-  // Create clusters from visitors
-  const clusters = useMemo(() => {
-    console.log("Creating clusters from visitors:", visitors);
-    return createClusters(visitors, zoomLevel);
-  }, [visitors, zoomLevel]);
-
-  const pointData = useMemo(() => {
-    console.log("Recalculating point data");
-    console.log("Current time:", Date.now());
-    console.log("Clusters:", clusters);
-
-    return clusters.map((cluster) => {
-      const baseSize = 0.3; // Increased base size of spike (10x larger)
-      const height = Math.max(0.5, Math.log2(cluster.totalVisits) * 1.5); // More reasonable height scaling
-      const lastSeen = cluster.visitors.reduce((latest, v) => 
-        Math.max(latest, new Date(v.last_seen || 0).getTime()), 0);
-      const isNew = Date.now() - lastSeen < 30000; // 30 seconds
-
-      console.log("Cluster analysis:", {
-        latitude: cluster.latitude,
-        longitude: cluster.longitude,
-        lastSeen,
-        timeSinceLastSeen: Date.now() - lastSeen,
-        isNew,
-        totalVisits: cluster.totalVisits,
-        height,
-      });
-
-      const point = {
-        latitude: cluster.latitude,
-        longitude: cluster.longitude,
-        size: baseSize,
-        height,
-        color: isNew ? "#ff3333" : "#ffaa00",
-        emissive: isNew ? "#ff0000" : "#ff6600",
-        cluster: cluster,
-        intensity: isNew ? 2 : 1,
-        isNew,
-        lastSeen,
-        timeSinceLastSeen: Date.now() - lastSeen,
-      };
-
-      console.log("Created point:", point);
-      return point;
-    });
-  }, [clusters]);
-
-  // Record visit
+  // Record new visitor on initial load
   useEffect(() => {
     if (!visitorId) return;
 
@@ -228,62 +233,102 @@ function VisitorMap() {
         visitor_id: visitorId,
       }),
     }).catch(console.error);
-  }, [visitorId]);
+  }, [visitorId]); // Records a new visitor on initial load
 
+  // Log visitors data changes for debugging
   useEffect(() => {
-    setIsMounted(true);
-    setVisitorId(getVisitorId());
-  }, []);
+    console.log("Visitors data updated:", {
+      count: visitors.length,
+      visitors: visitors.map((v) => ({
+        id: v.id,
+        last_seen: v.last_seen,
+        latitude: v.latitude,
+        longitude: v.longitude,
+      })),
+    });
+  }, [visitors]); // Logs visitors data changes for debugging
 
+  // Setup Three.js animation loop and scene configuration
   useEffect(() => {
-    setIsMobile(window.innerWidth < 768);
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  useEffect(() => {
+    // Store animation frame ID for cleanup
     let animationFrameId: number;
 
+    // Animation loop function that updates TWEEN animations
     const animate = () => {
+      // Request next frame and update all active TWEEN animations
       animationFrameId = requestAnimationFrame(animate);
       TWEEN.update();
     };
 
     if (isMounted && globeRef.current) {
+      // Start animation loop
       animate();
 
+      // Configure globe controls
       const controls = (globeRef.current as any).controls();
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.5;
+      controls.autoRotate = true; // Enable automatic rotation
+      controls.autoRotateSpeed = 0.5; // Set rotation speed (degrees per second)
 
-      // Enhance the globe's appearance
+      // Get reference to the Three.js scene
       const globe = (globeRef.current as any).scene();
+
+      // Add fog for depth perception
+      // Parameters: color, near distance (when fog starts), far distance (when fog is fully opaque)
       globe.fog = new Fog("#000000", 400, 2000);
 
-      // Add ambient light for better visibility
+      // Add ambient light for overall scene illumination
+      // Parameters: color, intensity (0-1)
       const ambientLight = new AmbientLight("#ffffff", 0.8);
       globe.add(ambientLight);
 
-      // Add directional light for better depth
+      // Add directional light for shadows and depth
+      // Parameters: color, intensity (0-1)
       const dirLight = new DirectionalLight("#ffffff", 1);
-      dirLight.position.set(1, 1, 1);
+      dirLight.position.set(1, 1, 1); // Position light at 45-degree angle
       globe.add(dirLight);
-
-      // Add a subtle blue point light from below
-      const bottomLight = new PointLight("#0066ff", 0.8, 1000);
-      bottomLight.position.set(0, -500, 0);
-      globe.add(bottomLight);
     }
 
+    // Cleanup function to prevent memory leaks
     return () => {
-      if (animationFrameId) {
+      if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isMounted]);
+  }, [isMounted]); // Sets up Three.js animation loop and scene configuration on mount
 
-  // Custom render function for 3D markers
+  // Memoized data transformations
+  const clusters = useMemo(() => {
+    console.log("Creating clusters from visitors:", visitors);
+    return createClusters(visitors, zoomLevel);
+  }, [visitors, zoomLevel]); // Memoizes the clusters data transformation
+
+  const pointData = useMemo(() => {
+    console.log("Recalculating point data");
+    return clusters.map((cluster) => {
+      const baseSize = 0.3;
+      const height = Math.max(0.5, Math.log2(cluster.totalVisits) * 1.5);
+      const lastSeen = cluster.visitors.reduce(
+        (latest, v) => Math.max(latest, new Date(v.last_seen || 0).getTime()),
+        0,
+      );
+      const isNew = Date.now() - lastSeen < 30000;
+
+      return {
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
+        size: baseSize,
+        height,
+        color: isNew ? "#ff3333" : "#ffaa00",
+        emissive: isNew ? "#ff0000" : "#ff6600",
+        cluster: cluster,
+        intensity: isNew ? 2 : 1,
+        isNew,
+        lastSeen,
+        timeSinceLastSeen: Date.now() - lastSeen,
+      };
+    });
+  }, [clusters]); // Memoizes the pointData data transformation
+
   const customRender = useCallback((marker: any) => {
     try {
       console.log("Rendering marker:", {
@@ -356,7 +401,9 @@ function VisitorMap() {
           new TWEEN.Tween(light)
             .to(
               {
-                intensity: hovering ? marker.intensity * 4 : marker.intensity * 2,
+                intensity: hovering
+                  ? marker.intensity * 4
+                  : marker.intensity * 2,
               },
               duration,
             )
@@ -425,7 +472,9 @@ function VisitorMap() {
 
             // Interpolate colors
             tempColor.copy(startColor).lerp(peakColor, finalColorFactor);
-            tempEmissive.copy(startEmissive).lerp(peakEmissive, finalColorFactor);
+            tempEmissive
+              .copy(startEmissive)
+              .lerp(peakEmissive, finalColorFactor);
 
             // Log animation state periodically
             if (elapsedTime % 1000 < 16) {
@@ -505,7 +554,6 @@ function VisitorMap() {
     }
   }, []);
 
-  // Custom update function for Three.js objects
   const customThreeObjectUpdate = useCallback(
     (obj: Object3D | undefined, d: any) => {
       if (!obj || !d) return;
@@ -517,7 +565,11 @@ function VisitorMap() {
           typeof d.longitude === "number" &&
           globeRef.current
         ) {
-          const coords = (globeRef.current as any).getCoords(d.latitude, d.longitude, 0.1);
+          const coords = (globeRef.current as any).getCoords(
+            d.latitude,
+            d.longitude,
+            0.1,
+          );
           if (coords) {
             obj.position.set(coords.x, coords.y, coords.z);
             // Make the object point outward from the globe center
@@ -532,37 +584,38 @@ function VisitorMap() {
     [],
   );
 
-  const getStyles = (isMobile: boolean) => ({
-    title: {
-      position: 'absolute',
-      top: isMobile ? '15px' : '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      color: '#fff',
-      fontSize: isMobile ? '16px' : '24px',
-      fontWeight: 500,
-      textAlign: 'center',
-      zIndex: 1000,
-      textShadow: '0 0 10px rgba(255, 255, 255, 0.5)',
-      letterSpacing: '1px',
-    },
-    visitorCount: {
-      position: 'absolute',
-      bottom: isMobile ? '15px' : '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      color: '#fff',
-      fontSize: isMobile ? '14px' : '16px',
-      textAlign: 'center',
-      zIndex: 1000,
-      textShadow: '0 0 10px rgba(255, 255, 255, 0.5)',
-      background: 'rgba(255, 255, 255, 0.05)',
-      padding: isMobile ? '6px 12px' : '8px 16px',
-      borderRadius: '20px',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      backdropFilter: 'blur(5px)'
-    }
-  } as const);
+  const getStyles = (isMobile: boolean) =>
+    ({
+      title: {
+        position: "absolute",
+        top: isMobile ? "15px" : "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        color: "#fff",
+        fontSize: isMobile ? "16px" : "24px",
+        fontWeight: 500,
+        textAlign: "center",
+        zIndex: 1000,
+        textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
+        letterSpacing: "1px",
+      },
+      visitorCount: {
+        position: "absolute",
+        bottom: isMobile ? "15px" : "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        color: "#fff",
+        fontSize: isMobile ? "14px" : "16px",
+        textAlign: "center",
+        zIndex: 1000,
+        textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
+        background: "rgba(255, 255, 255, 0.05)",
+        padding: isMobile ? "6px 12px" : "8px 16px",
+        borderRadius: "20px",
+        border: "1px solid rgba(255, 255, 255, 0.1)",
+        backdropFilter: "blur(5px)",
+      },
+    }) as const;
 
   if (!isMounted) {
     return <div>Loading globe...</div>;
@@ -598,29 +651,13 @@ function VisitorMap() {
     whiteSpace: "nowrap",
   };
 
-  useEffect(() => {
-    if (globeRef.current) {
-      globeRef.current.pointOfView({ lat: 39.6, lng: -98.5, altitude: 2.5 });
-
-      // Add mousemove handler for tooltip positioning
-      const handleMouseMove = (event) => {
-        setTooltipPosition({ x: event.clientX, y: event.clientY });
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }
-  }, []);
-
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div style={styles.title}>
-        ElectricSQL Live Visitors Map
-      </div>
+      <div style={styles.title}>ElectricSQL Live Visitors Map</div>
       {visitors.length > 0 && (
         <div style={styles.visitorCount}>
-          {visitors.length.toLocaleString()} visitor{visitors.length !== 1 ? "s" : ""} in
-          the last 24 hours
+          {visitors.length.toLocaleString()} visitor
+          {visitors.length !== 1 ? "s" : ""}
         </div>
       )}
       <RecentVisitors visitors={visitors} />
@@ -695,7 +732,8 @@ function VisitorMap() {
             ).join(", ")}
           </h3>
           <p style={{ margin: "5px 0", fontSize: "14px" }}>
-            {selectedCluster.visitors.length} visit{selectedCluster.visitors.length !== 1 ? 's' : ''}
+            {selectedCluster.visitors.length} visit
+            {selectedCluster.visitors.length !== 1 ? "s" : ""}
           </p>
           <button
             onClick={() => setSelectedCluster(null)}
