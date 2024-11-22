@@ -61,9 +61,9 @@ function calculateDistance(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.sin(dLon / 2) *
-      Math.sin(dLon / 2) *
-      Math.cos(lat1Rad) *
-      Math.cos(lat2Rad);
+    Math.sin(dLon / 2) *
+    Math.cos(lat1Rad) *
+    Math.cos(lat2Rad);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = earthRadius * c;
 
@@ -230,7 +230,7 @@ function VisitorMap() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        visitor_id: visitorId,
+        visitorId,
       }),
     }).catch(console.error);
   }, [visitorId]); // Records a new visitor on initial load
