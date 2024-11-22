@@ -16,7 +16,7 @@ import type { Object3D } from "three";
 // Dynamically import Globe
 const Globe = React.lazy(() => import("react-globe.gl"));
 
-interface Visitor {
+type Visitor = {
   id: string;
   visitor_id: string;
   latitude: string | number;
@@ -35,90 +35,78 @@ interface Cluster {
   lastVisitTime?: number;
 }
 
-function getGridSize(zoom: number): number {
-  if (zoom <= 1) return 20; // World view
-  if (zoom <= 2) return 10; // Continental view
-  if (zoom <= 4) return 5; // Country view
-  return 2; // City view
+function calculateDistance(latitude1: number, longitude1: number, latitude2: number, longitude2: number): number {
+  const earthRadius = 6371; // in kilometers
+  const dLat = (latitude2 - latitude1) * Math.PI / 180;
+  const dLon = (longitude2 - longitude1) * Math.PI / 180;
+  const lat1Rad = latitude1 * Math.PI / 180;
+  const lat2Rad = latitude2 * Math.PI / 180;
+
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = earthRadius * c;
+
+  return distance;
 }
 
-function createClusters(visitors: Visitor[], zoom: number): Cluster[] {
-  const grid: { [key: string]: Visitor[] } = {};
-  const gridSize = getGridSize(zoom);
+function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
+  console.log("Recalculating point data");
+  console.log("Current time:", Date.now());
 
-  // Find the most recent visit time across all visitors
-  const mostRecentVisit = Math.max(
-    ...visitors.map((v) => new Date(v.last_seen || 0).getTime()),
-  );
-  const recentThreshold = mostRecentVisit - 5000; // Consider visits within last 5 seconds of most recent as new
+  if (visitors.length === 0) {
+    console.log("Clusters: []");
+    return [];
+  }
 
-  // Assign visitors to grid cells
-  visitors.forEach((visitor) => {
-    // Convert string coordinates to numbers
-    const lat =
-      typeof visitor.latitude === "string"
-        ? parseFloat(visitor.latitude)
-        : visitor.latitude;
-    const lon =
-      typeof visitor.longitude === "string"
-        ? parseFloat(visitor.longitude)
-        : visitor.longitude;
+  // Adjust clustering radius based on zoom level
+  const baseRadius = 30; // Base clustering radius in degrees
+  const radius = baseRadius * (1 - zoomLevel); // Radius decreases as zoom increases
 
-    // Ensure we have valid coordinates
-    if (isNaN(lat) || isNaN(lon)) return;
+  const clusters: Cluster[] = [];
+  const points = visitors.map((visitor) => ({
+    latitude: parseFloat(visitor.latitude as string),
+    longitude: parseFloat(visitor.longitude as string),
+    visitor,
+  }));
 
-    const gridLat = Math.floor(lat / gridSize) * gridSize;
-    const gridLon = Math.floor(lon / gridSize) * gridSize;
-    const key = `${gridLat},${gridLon}`;
+  points.forEach((point) => {
+    let addedToCluster = false;
 
-    if (!grid[key]) {
-      grid[key] = [];
+    for (const cluster of clusters) {
+      const distance = calculateDistance(
+        cluster.latitude,
+        cluster.longitude,
+        point.latitude,
+        point.longitude
+      );
+
+      if (distance <= radius) {
+        cluster.visitors.push(point.visitor);
+        cluster.latitude =
+          cluster.visitors.reduce((sum, v) => sum + parseFloat(v.latitude as string), 0) /
+          cluster.visitors.length;
+        cluster.longitude =
+          cluster.visitors.reduce((sum, v) => sum + parseFloat(v.longitude as string), 0) /
+          cluster.visitors.length;
+        cluster.totalVisits =
+          cluster.visitors.reduce((sum, v) => sum + (v.visit_count || 1), 0);
+        addedToCluster = true;
+        break;
+      }
     }
-    grid[key].push({
-      ...visitor,
-      latitude: lat,
-      longitude: lon,
-    });
+
+    if (!addedToCluster) {
+      clusters.push({
+        latitude: point.latitude,
+        longitude: point.longitude,
+        visitors: [point.visitor],
+        totalVisits: point.visitor.visit_count || 1,
+      });
+    }
   });
 
-  // Convert grid cells to clusters
-  const clusters = Object.entries(grid).map(([key, cellVisitors]) => {
-    const avgLat =
-      cellVisitors.reduce((sum, v) => {
-        const lat =
-          typeof v.latitude === "string" ? parseFloat(v.latitude) : v.latitude;
-        return sum + lat;
-      }, 0) / cellVisitors.length;
-
-    const avgLon =
-      cellVisitors.reduce((sum, v) => {
-        const lon =
-          typeof v.longitude === "string"
-            ? parseFloat(v.longitude)
-            : v.longitude;
-        return sum + lon;
-      }, 0) / cellVisitors.length;
-
-    const totalVisits = cellVisitors.reduce(
-      (sum, v) => sum + (v.visit_count || 1),
-      0,
-    );
-
-    // Find the most recent visit time in this cluster
-    const lastVisitTime = Math.max(
-      ...cellVisitors.map((v) => new Date(v.last_seen || 0).getTime()),
-    );
-
-    return {
-      latitude: avgLat,
-      longitude: avgLon,
-      visitors: cellVisitors,
-      totalVisits,
-      lastVisitTime:
-        lastVisitTime >= recentThreshold ? lastVisitTime : undefined,
-    };
-  });
-
+  console.log("Clusters:", clusters);
   return clusters;
 }
 
@@ -132,7 +120,7 @@ function getVisitorId(): string {
 }
 
 function VisitorMap() {
-  const globeRef = useRef();
+  const globeRef = useRef<any>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [visitorId, setVisitorId] = useState("");
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
@@ -140,6 +128,7 @@ function VisitorMap() {
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   });
@@ -150,18 +139,40 @@ function VisitorMap() {
       count: visitors.length,
       visitors: visitors.map((v) => ({
         id: v.id,
-        timestamp: v.timestamp,
+        last_seen: v.last_seen,
         latitude: v.latitude,
         longitude: v.longitude,
       })),
     });
   }, [visitors]);
 
+  // Update zoom level when camera moves
+  useEffect(() => {
+    if (globeRef.current) {
+      const camera = globeRef.current.camera();
+      const handleCameraChange = () => {
+        // Calculate zoom level based on camera position
+        const distance = camera.position.length();
+        const maxDistance = 1000; // Max camera distance
+        const minDistance = 200;  // Min camera distance
+        const normalizedZoom = 1 - ((distance - minDistance) / (maxDistance - minDistance));
+        setZoomLevel(Math.max(0.1, Math.min(1, normalizedZoom)));
+      };
+
+      globeRef.current.controls().addEventListener('change', handleCameraChange);
+      return () => {
+        if (globeRef.current) {
+          globeRef.current.controls().removeEventListener('change', handleCameraChange);
+        }
+      };
+    }
+  }, []);
+
   // Create clusters from visitors
   const clusters = useMemo(() => {
     console.log("Creating clusters from visitors:", visitors);
-    return createClusters(visitors, 1);
-  }, [visitors]);
+    return createClusters(visitors, zoomLevel);
+  }, [visitors, zoomLevel]);
 
   const pointData = useMemo(() => {
     console.log("Recalculating point data");
@@ -171,24 +182,23 @@ function VisitorMap() {
     return clusters.map((cluster) => {
       const baseSize = 0.3; // Increased base size of spike (10x larger)
       const height = Math.max(0.5, Math.log2(cluster.totalVisits) * 1.5); // More reasonable height scaling
-      const timeSinceVisit = cluster.lastVisitTime
-        ? Date.now() - cluster.lastVisitTime
-        : Infinity;
-      const isNew = timeSinceVisit < 30000; // 30 seconds
+      const lastSeen = cluster.visitors.reduce((latest, v) => 
+        Math.max(latest, new Date(v.last_seen || 0).getTime()), 0);
+      const isNew = Date.now() - lastSeen < 30000; // 30 seconds
 
       console.log("Cluster analysis:", {
         latitude: cluster.latitude,
         longitude: cluster.longitude,
-        lastVisitTime: cluster.lastVisitTime,
-        timeSinceVisit,
+        lastSeen,
+        timeSinceLastSeen: Date.now() - lastSeen,
         isNew,
         totalVisits: cluster.totalVisits,
         height,
       });
 
       const point = {
-        lat: cluster.latitude,
-        lng: cluster.longitude,
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
         size: baseSize,
         height,
         color: isNew ? "#ff3333" : "#ffaa00",
@@ -196,8 +206,8 @@ function VisitorMap() {
         cluster: cluster,
         intensity: isNew ? 2 : 1,
         isNew,
-        visitTime: cluster.lastVisitTime,
-        timeSinceVisit,
+        lastSeen,
+        timeSinceLastSeen: Date.now() - lastSeen,
       };
 
       console.log("Created point:", point);
@@ -205,44 +215,20 @@ function VisitorMap() {
     });
   }, [clusters]);
 
-  // Effect to handle new visitor recording
+  // Record visit
   useEffect(() => {
-    const recordVisit = async () => {
-      if (!visitorId) return;
+    if (!visitorId) return;
 
-      try {
-        console.log("Recording visit for visitor:", visitorId);
-        const response = await fetch(
-          `${import.meta.env.PUBLIC_API_URL}/api/record-visit`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              visitorId,
-              timestamp: Date.now(),
-              // Add any other relevant data
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to record visit");
-        }
-
-        console.log("Visit recorded successfully");
-      } catch (error) {
-        console.error("Error recording visit:", error);
-      }
-    };
-
-    // Record visit when the component mounts
-    if (visitorId && isMounted) {
-      console.log("Component mounted, recording visit");
-      recordVisit();
-    }
-  }, [visitorId, isMounted]);
+    fetch(`${import.meta.env.PUBLIC_API_URL}/api/record-visit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        visitor_id: visitorId,
+      }),
+    }).catch(console.error);
+  }, [visitorId]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -301,11 +287,11 @@ function VisitorMap() {
   const customRender = useCallback((marker: any) => {
     try {
       console.log("Rendering marker:", {
-        lat: marker.lat,
-        lng: marker.lng,
+        latitude: marker.latitude,
+        longitude: marker.longitude,
         isNew: marker.isNew,
-        timeSinceVisit: marker.timeSinceVisit,
-        visitTime: marker.visitTime,
+        timeSinceLastSeen: marker.timeSinceLastSeen,
+        lastSeen: marker.lastSeen,
       });
 
       // Create a group to hold our spike
@@ -380,9 +366,9 @@ function VisitorMap() {
 
         // Update tooltip
         if (hovering) {
-          const location = marker.cluster.city
-            ? `${marker.cluster.city}, ${marker.cluster.country}`
-            : marker.cluster.country || "Unknown Location";
+          const location = marker.cluster.visitors[0].city
+            ? `${marker.cluster.visitors[0].city}, ${marker.cluster.visitors[0].country}`
+            : marker.cluster.visitors[0].country || "Unknown Location";
 
           setTooltipContent(
             `${location}<br/>${marker.cluster.totalVisits} visitor${marker.cluster.totalVisits !== 1 ? "s" : ""}`,
@@ -403,9 +389,9 @@ function VisitorMap() {
       let animationFrameId: number | null = null;
       if (marker.isNew) {
         console.log("Starting pulse animation for new visitor", {
-          lat: marker.lat,
-          lng: marker.lng,
-          timeSinceVisit: marker.timeSinceVisit,
+          latitude: marker.latitude,
+          longitude: marker.longitude,
+          timeSinceLastSeen: marker.timeSinceLastSeen,
         });
 
         const startTime = Date.now();
@@ -451,8 +437,8 @@ function VisitorMap() {
                 finalPulse,
                 colorPulse,
                 finalColorFactor,
-                lat: marker.lat,
-                lng: marker.lng,
+                latitude: marker.latitude,
+                longitude: marker.longitude,
               });
             }
 
@@ -527,11 +513,11 @@ function VisitorMap() {
       try {
         // Update position if needed
         if (
-          typeof d.lat === "number" &&
-          typeof d.lng === "number" &&
+          typeof d.latitude === "number" &&
+          typeof d.longitude === "number" &&
           globeRef.current
         ) {
-          const coords = (globeRef.current as any).getCoords(d.lat, d.lng, 0.1);
+          const coords = (globeRef.current as any).getCoords(d.latitude, d.longitude, 0.1);
           if (coords) {
             obj.position.set(coords.x, coords.y, coords.z);
             // Make the object point outward from the globe center
@@ -545,6 +531,56 @@ function VisitorMap() {
     },
     [],
   );
+
+  const getStyles = (isMobile: boolean) => ({
+    title: {
+      position: 'absolute',
+      top: isMobile ? '15px' : '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      color: '#fff',
+      fontSize: isMobile ? '16px' : '24px',
+      fontWeight: 500,
+      textAlign: 'center',
+      zIndex: 1000,
+      textShadow: '0 0 10px rgba(255, 255, 255, 0.5)',
+      letterSpacing: '1px',
+    },
+    visitorCount: {
+      position: 'absolute',
+      bottom: isMobile ? '15px' : '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      color: '#fff',
+      fontSize: isMobile ? '14px' : '16px',
+      textAlign: 'center',
+      zIndex: 1000,
+      textShadow: '0 0 10px rgba(255, 255, 255, 0.5)',
+      background: 'rgba(255, 255, 255, 0.05)',
+      padding: isMobile ? '6px 12px' : '8px 16px',
+      borderRadius: '20px',
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      backdropFilter: 'blur(5px)'
+    }
+  } as const);
+
+  if (!isMounted) {
+    return <div>Loading globe...</div>;
+  }
+
+  if (isLoading) {
+    return <div>Loading visitor data...</div>;
+  }
+
+  if (!visitors) {
+    return <div>No visitors data available</div>;
+  }
+
+  if (!visitorId) {
+    return <div>No visitor ID found</div>;
+  }
+
+  const styles = getStyles(isMobile);
 
   const tooltipStyle = {
     position: "absolute",
@@ -576,62 +612,17 @@ function VisitorMap() {
     }
   }, []);
 
-  if (!isMounted) {
-    return <div>Loading globe...</div>;
-  }
-
-  if (isLoading) {
-    return <div>Loading visitor data...</div>;
-  }
-
-  if (!visitors) {
-    return <div>No visitors data available</div>;
-  }
-
-  if (!visitorId) {
-    return <div>No visitor ID found</div>;
-  }
-
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div
-        style={{
-          position: "absolute",
-          top: "20px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          color: "#fff",
-          fontSize: isMobile ? "1.2rem" : "1.8rem",
-          fontWeight: "bold",
-          textAlign: "center",
-          textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
-          zIndex: 10,
-        }}
-      >
+      <div style={styles.title}>
         ElectricSQL Live Visitors Map
       </div>
-
-      <div
-        style={{
-          position: "absolute",
-          bottom: isMobile ? "20px" : "30px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          color: "#fff",
-          fontSize: isMobile ? "1rem" : "1.2rem",
-          fontWeight: "bold",
-          textAlign: "center",
-          padding: "8px 16px",
-          background: "rgba(0, 0, 0, 0.6)",
-          borderRadius: "8px",
-          boxShadow: "0 0 10px rgba(255, 255, 255, 0.2)",
-          backdropFilter: "blur(5px)",
-          zIndex: 10,
-        }}
-      >
-        {visitors.length} Total Visitors
-      </div>
-
+      {visitors.length > 0 && (
+        <div style={styles.visitorCount}>
+          {visitors.length.toLocaleString()} visitor{visitors.length !== 1 ? "s" : ""} in
+          the last 24 hours
+        </div>
+      )}
       <RecentVisitors visitors={visitors} />
       <div
         dangerouslySetInnerHTML={{ __html: tooltipContent }}
@@ -724,45 +715,6 @@ function VisitorMap() {
           </button>
         </div>
       )}
-      <style jsx>{`
-        .title {
-          position: absolute;
-          top: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          color: #fff;
-          font-size: 24px;
-          font-weight: 500;
-          text-align: center;
-          z-index: 1000;
-          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-          letter-spacing: 1px;
-        }
-
-        @media (max-width: 768px) {
-          .title {
-            font-size: 16px;
-            top: 15px;
-          }
-        }
-
-        .visitor-count {
-          position: absolute;
-          bottom: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          color: #fff;
-          font-size: 16px;
-          text-align: center;
-          z-index: 1000;
-          text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-          background: rgba(255, 255, 255, 0.05);
-          padding: 8px 16px;
-          border-radius: 20px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(5px);
-        }
-      `}</style>
     </div>
   );
 }
