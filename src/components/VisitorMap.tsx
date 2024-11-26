@@ -319,9 +319,9 @@ function VisitorMap() {
   const pointData = useMemo(() => {
     console.log("Recalculating point data");
     return clusters.map((cluster) => ({
-      lat: cluster.latitude,
-      lng: cluster.longitude,
-      alt: Math.min(1.5, Math.log2(cluster.totalVisits) * 0.3 + 0.1), // Height based on visit count
+      latitude: cluster.latitude,
+      longitude: cluster.longitude,
+      visit_count: cluster.totalVisits,
     }));
   }, [clusters]);
 
@@ -355,38 +355,12 @@ function VisitorMap() {
           })
         )
         // Add visitor location data points to the globe
-        .customLayerData(pointData)
-        // Define the shape and appearance of visitor markers
-        .customThreeObject(() => {
-          return new THREE.Mesh(
-            new THREE.ConeGeometry(0.3, 1, 8),  // Create cone shape: radius, height, segments
-            new THREE.MeshBasicMaterial({
-              color: '#ff6b00',   // Orange color for visitor markers
-              opacity: 0.9,
-              transparent: true,
-            })
-          );
-        })
-        // Position and orient the visitor markers on the globe
-        .customThreeObjectUpdate((obj, d: Visitor) => {
-          // Convert lat/long to 3D coordinates on the globe's surface
-          const coords = world.getCoords(
-            Number(d.latitude),
-            Number(d.longitude),
-            0  // assuming no altitude, so defaulting to 0
-          );
-          Object.assign(obj.position, coords);
-
-          // Make the cone point outward from the globe's center
-          const lookAt = new THREE.Vector3();
-          lookAt.copy(obj.position).multiplyScalar(2);
-          obj.lookAt(lookAt);
-
-          // Rotate the cone to point outward perpendicular to the globe's surface
-          obj.rotateX(Math.PI / 2);
-        })
-        // Configure the globe's atmosphere effect
-        //.atmosphereColor('#655ea0')  // Purple-ish atmosphere glow
+        .pointsData(pointData)
+        .pointLat(d => Number(d.latitude))
+        .pointLng(d => Number(d.longitude))
+        .pointAltitude(d => Math.min(0.8, Math.max(0.01, d.visit_count / 50)))
+        .pointRadius(0.3)
+        .pointColor(() => '#ff6090')
         // Configure country polygons
         .polygonsData(countryFeatures.features)
         .polygonCapColor(() => '#2a2469')
