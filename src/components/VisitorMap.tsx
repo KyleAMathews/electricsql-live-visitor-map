@@ -23,6 +23,11 @@ import {
   Fog,
 } from "three";
 import type { Object3D } from "three";
+import { feature } from "topojson-client";
+import countries from "world-atlas/countries-110m.json";
+
+// Convert TopoJSON to GeoJSON
+const countryFeatures = feature(countries, countries.objects.countries);
 
 // Dynamically import Globe
 const Globe = React.lazy(() => import("react-globe.gl"));
@@ -71,26 +76,31 @@ function calculateDistance(
 }
 
 function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
-  console.log("Recalculating point data");
-  console.log("Current time:", Date.now());
-
   if (visitors.length === 0) {
-    console.log("Clusters: []");
     return [];
   }
 
-  // Adjust clustering radius based on zoom level
-  const baseRadius = 30; // Base clustering radius in degrees
-  const radius = baseRadius * (1 - zoomLevel); // Radius decreases as zoom increases
-
-  const clusters: Cluster[] = [];
+  // Convert visitors to points with parsed coordinates
   const points = visitors.map((visitor) => ({
     latitude: parseFloat(visitor.latitude as string),
     longitude: parseFloat(visitor.longitude as string),
     visitor,
   }));
 
-  points.forEach((point) => {
+  // Start with the first point as the initial cluster
+  const clusters: Cluster[] = [{
+    latitude: points[0].latitude,
+    longitude: points[0].longitude,
+    visitors: [points[0].visitor],
+    totalVisits: points[0].visitor.visit_count || 1,
+  }];
+
+  // Fixed 50km radius for city-level clustering
+  const radius = 50; // 50km radius
+
+  // Try to add each remaining point to an existing cluster
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i];
     let addedToCluster = false;
 
     for (const cluster of clusters) {
@@ -102,17 +112,17 @@ function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
       );
 
       if (distance <= radius) {
+        // Add to existing cluster
         cluster.visitors.push(point.visitor);
-        cluster.latitude =
-          cluster.visitors.reduce(
-            (sum, v) => sum + parseFloat(v.latitude as string),
-            0,
-          ) / cluster.visitors.length;
-        cluster.longitude =
-          cluster.visitors.reduce(
-            (sum, v) => sum + parseFloat(v.longitude as string),
-            0,
-          ) / cluster.visitors.length;
+        // Recalculate cluster center
+        cluster.latitude = cluster.visitors.reduce(
+          (sum, v) => sum + parseFloat(v.latitude as string),
+          0,
+        ) / cluster.visitors.length;
+        cluster.longitude = cluster.visitors.reduce(
+          (sum, v) => sum + parseFloat(v.longitude as string),
+          0,
+        ) / cluster.visitors.length;
         cluster.totalVisits = cluster.visitors.reduce(
           (sum, v) => sum + (v.visit_count || 1),
           0,
@@ -123,6 +133,7 @@ function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
     }
 
     if (!addedToCluster) {
+      // Create new cluster
       clusters.push({
         latitude: point.latitude,
         longitude: point.longitude,
@@ -130,9 +141,13 @@ function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
         totalVisits: point.visitor.visit_count || 1,
       });
     }
+  }
+
+  console.log(`Created ${clusters.length} clusters from ${visitors.length} visitors`);
+  clusters.forEach((cluster, i) => {
+    console.log(`Cluster ${i + 1}: ${cluster.visitors.length} visitors at ${cluster.latitude}, ${cluster.longitude}`);
   });
 
-  console.log("Clusters:", clusters);
   return clusters;
 }
 
@@ -300,289 +315,103 @@ function VisitorMap() {
   const clusters = useMemo(() => {
     console.log("Creating clusters from visitors:", visitors);
     return createClusters(visitors, zoomLevel);
-  }, [visitors, zoomLevel]); // Memoizes the clusters data transformation
+  }, [visitors, zoomLevel]);
 
   const pointData = useMemo(() => {
     console.log("Recalculating point data");
-    return clusters.map((cluster) => {
-      const baseSize = 0.3;
-      const height = Math.max(0.5, Math.log2(cluster.totalVisits) * 1.5);
-      const lastSeen = cluster.visitors.reduce(
-        (latest, v) => Math.max(latest, new Date(v.last_seen || 0).getTime()),
-        0,
-      );
-      const isNew = Date.now() - lastSeen < 30000;
+    return clusters.map((cluster) => ({
+      lat: cluster.latitude,
+      lng: cluster.longitude,
+      alt: Math.min(1.5, Math.log2(cluster.totalVisits) * 0.3 + 0.1), // Height based on visit count
+    }));
+  }, [clusters]);
 
-      return {
-        latitude: cluster.latitude,
-        longitude: cluster.longitude,
-        size: baseSize,
-        height,
-        color: isNew ? "#ff3333" : "#ffaa00",
-        emissive: isNew ? "#ff0000" : "#ff6600",
-        cluster: cluster,
-        intensity: isNew ? 2 : 1,
-        isNew,
-        lastSeen,
-        timeSinceLastSeen: Date.now() - lastSeen,
-      };
+  useEffect(() => {
+    if (!isMounted || !globeRef.current) return;
+
+    Promise.all([
+      import('globe.gl'),
+      import('three')
+    ]).then(([GlobeModule, THREE]) => {
+      const Globe = GlobeModule.default;
+      const world = Globe({
+        animateIn: true,
+        rendererConfig: {
+          antialias: true,
+          alpha: true
+        }
+      })(globeRef.current);
+
+      world
+        // Set the globe height to fill the window
+        .height(window.innerHeight)
+        // Set transparent background
+        .backgroundColor('rgba(255, 255, 255, 0)')
+        // Configure the globe's material and appearance
+        .globeMaterial(
+          new THREE.MeshPhongMaterial({
+            color: '#120f30',  // Dark blue color for the globe
+            opacity: 0.7,      // Slightly transparent
+            transparent: true,
+          })
+        )
+        // Add visitor location data points to the globe
+        .customLayerData(pointData)
+        // Define the shape and appearance of visitor markers
+        .customThreeObject(() => {
+          return new THREE.Mesh(
+            new THREE.ConeGeometry(0.3, 1, 8),  // Create cone shape: radius, height, segments
+            new THREE.MeshBasicMaterial({
+              color: '#ff6b00',   // Orange color for visitor markers
+              opacity: 0.9,
+              transparent: true,
+            })
+          );
+        })
+        // Position and orient the visitor markers on the globe
+        .customThreeObjectUpdate((obj, d: Visitor) => {
+          // Convert lat/long to 3D coordinates on the globe's surface
+          const coords = world.getCoords(
+            Number(d.latitude),
+            Number(d.longitude),
+            0  // assuming no altitude, so defaulting to 0
+          );
+          Object.assign(obj.position, coords);
+
+          // Make the cone point outward from the globe's center
+          const lookAt = new THREE.Vector3();
+          lookAt.copy(obj.position).multiplyScalar(2);
+          obj.lookAt(lookAt);
+
+          // Rotate the cone to point outward perpendicular to the globe's surface
+          obj.rotateX(Math.PI / 2);
+        })
+        // Configure the globe's atmosphere effect
+        //.atmosphereColor('#655ea0')  // Purple-ish atmosphere glow
+        // Configure country polygons
+        .polygonsData(countryFeatures.features)
+        .polygonCapColor(() => '#2a2469')
+        .polygonSideColor(() => '#2a2469')
+        .polygonStrokeColor(() => '#1a1657')
+        .polygonAltitude(0.01)
+        // Show latitude/longitude grid lines
+        .showGraticules(true);
+
+      // Configure globe controls
+      const controls = world.controls();
+      controls.autoRotate = true;          // Enable automatic rotation
+      controls.enableZoom = false;         // Disable zooming
+      controls.autoRotateSpeed = 0.5;      // Set rotation speed
     });
-  }, [clusters]); // Memoizes the pointData data transformation
 
-  const customRender = useCallback((marker: any) => {
-    try {
-      console.log("Rendering marker:", {
-        latitude: marker.latitude,
-        longitude: marker.longitude,
-        isNew: marker.isNew,
-        timeSinceLastSeen: marker.timeSinceLastSeen,
-        lastSeen: marker.lastSeen,
-      });
-
-      // Create a group to hold our spike
-      const group = new Group();
-
-      // Create a spike (cone)
-      const spikeGeometry = new ConeGeometry(
-        marker.size, // radius at base
-        marker.height, // height
-        8, // segments
-        1, // height segments
-        false, // open ended
-      );
-      const spikeMaterial = new MeshPhongMaterial({
-        color: marker.color,
-        emissive: marker.emissive,
-        emissiveIntensity: marker.intensity,
-        transparent: true,
-        opacity: 0.8,
-        shininess: 100,
-        side: DoubleSide,
-      });
-      const spike = new Mesh(spikeGeometry, spikeMaterial);
-
-      // Center the spike at its base
-      spike.position.y = marker.height / 2;
-
-      // Add point light for glow effect
-      const light = new PointLight(
-        marker.color,
-        marker.intensity * 2,
-        marker.height * 10,
-      );
-      light.position.y = marker.height / 2;
-
-      group.add(spike);
-      group.add(light);
-
-      // Add hover effect
-      const onHover = (hovering: boolean) => {
-        if (!group) return;
-
-        const scale = hovering ? 1.2 : 1.0;
-        const duration = 200;
-        const easing = TWEEN.Easing.Cubic.Out;
-
-        // Scale tween
-        new TWEEN.Tween(group.scale)
-          .to(
-            {
-              x: scale,
-              y: scale,
-              z: scale,
-            },
-            duration,
-          )
-          .easing(easing)
-          .start();
-
-        // Light intensity tween
-        if (light) {
-          new TWEEN.Tween(light)
-            .to(
-              {
-                intensity: hovering
-                  ? marker.intensity * 4
-                  : marker.intensity * 2,
-              },
-              duration,
-            )
-            .easing(easing)
-            .start();
+    return () => {
+      if (globeRef.current) {
+        while (globeRef.current.firstChild) {
+          globeRef.current.removeChild(globeRef.current.firstChild);
         }
-
-        // Update tooltip
-        if (hovering) {
-          const location = marker.cluster.visitors[0].city
-            ? `${marker.cluster.visitors[0].city}, ${marker.cluster.visitors[0].country}`
-            : marker.cluster.visitors[0].country || "Unknown Location";
-
-          setTooltipContent(
-            `${location}<br/>${marker.cluster.totalVisits} visitor${marker.cluster.totalVisits !== 1 ? "s" : ""}`,
-          );
-          setShowTooltip(true);
-        } else {
-          setShowTooltip(false);
-        }
-      };
-
-      // Store the hover handler on the group
-      (group as any).__onHover = onHover;
-
-      // Set initial scale
-      group.scale.set(1, 1, 1);
-
-      // Add a pulsing animation for new visitors
-      let animationFrameId: number | null = null;
-      if (marker.isNew) {
-        console.log("Starting pulse animation for new visitor", {
-          latitude: marker.latitude,
-          longitude: marker.longitude,
-          timeSinceLastSeen: marker.timeSinceLastSeen,
-        });
-
-        const startTime = Date.now();
-        const ANIMATION_DURATION = 30000; // 30 seconds
-        const FADE_DURATION = 5000; // 5 second fade out
-
-        // Create color objects for interpolation
-        const startColor = new Color("#ffaa00");
-        const peakColor = new Color("#ff3333");
-        const startEmissive = new Color("#ff6600");
-        const peakEmissive = new Color("#ff0000");
-        const tempColor = new Color();
-        const tempEmissive = new Color();
-
-        const animate = () => {
-          try {
-            const elapsedTime = Date.now() - startTime;
-            const timeLeft = ANIMATION_DURATION - elapsedTime;
-
-            // Calculate fade out factor (1 -> 0 over FADE_DURATION)
-            const fadeOutFactor =
-              timeLeft < FADE_DURATION ? timeLeft / FADE_DURATION : 1;
-
-            // Slower, more dramatic pulsing
-            const pulse = Math.sin(elapsedTime * 0.003) * 0.3 + 1.3; // Pulsing between 1.0 and 1.6
-            const finalPulse = 1 + (pulse - 1) * fadeOutFactor; // Smoothly reduce pulse intensity
-
-            // Calculate color interpolation factor (0 to 1 to 0)
-            const colorPulse = Math.sin(elapsedTime * 0.003) * 0.5 + 0.5; // Oscillates between 0 and 1
-            const finalColorFactor = colorPulse * fadeOutFactor;
-
-            // Interpolate colors
-            tempColor.copy(startColor).lerp(peakColor, finalColorFactor);
-            tempEmissive
-              .copy(startEmissive)
-              .lerp(peakEmissive, finalColorFactor);
-
-            // Log animation state periodically
-            if (elapsedTime % 1000 < 16) {
-              // Log roughly every second
-              console.log("Animation state:", {
-                timeLeft,
-                fadeOutFactor,
-                pulse,
-                finalPulse,
-                colorPulse,
-                finalColorFactor,
-                latitude: marker.latitude,
-                longitude: marker.longitude,
-              });
-            }
-
-            // Update spike material and scale
-            if (spike?.material instanceof MeshPhongMaterial) {
-              spike.material.emissiveIntensity = marker.intensity * finalPulse;
-              spike.material.opacity = Math.min(0.8, 0.6 + finalPulse * 0.2);
-              spike.material.color.copy(tempColor);
-              spike.material.emissive.copy(tempEmissive);
-              spike.material.needsUpdate = true;
-            }
-
-            // Scale the spike slightly with the pulse
-            group.scale.set(finalPulse, 1, finalPulse);
-
-            if (light) {
-              // Update light intensity, distance, and color
-              light.intensity = marker.intensity * 3 * finalPulse;
-              light.distance = marker.height * (10 + finalPulse * 5);
-              light.color.copy(tempColor);
-            }
-
-            if (timeLeft > 0) {
-              animationFrameId = requestAnimationFrame(animate);
-            } else {
-              console.log("Ending pulse animation");
-              // Reset to non-new state
-              if (spike?.material instanceof MeshPhongMaterial) {
-                spike.material.color.copy(startColor);
-                spike.material.emissive.copy(startEmissive);
-                spike.material.emissiveIntensity = 1;
-                spike.material.opacity = 0.8;
-              }
-              group.scale.set(1, 1, 1);
-              if (light) {
-                light.color.copy(startColor);
-                light.intensity = 2;
-              }
-            }
-          } catch (error) {
-            console.error("Error in animation:", error);
-            if (animationFrameId !== null) {
-              cancelAnimationFrame(animationFrameId);
-            }
-          }
-        };
-        animate();
       }
-
-      // Cleanup function
-      (group as any).__cleanup = () => {
-        if (animationFrameId !== null) {
-          cancelAnimationFrame(animationFrameId);
-        }
-        // Dispose of geometries and materials
-        spikeGeometry.dispose();
-        spikeMaterial.dispose();
-      };
-
-      return group;
-    } catch (error) {
-      console.error("Error rendering marker:", error);
-      return null;
-    }
-  }, []);
-
-  const customThreeObjectUpdate = useCallback(
-    (obj: Object3D | undefined, d: any) => {
-      if (!obj || !d) return;
-
-      try {
-        // Update position if needed
-        if (
-          typeof d.latitude === "number" &&
-          typeof d.longitude === "number" &&
-          globeRef.current
-        ) {
-          const coords = (globeRef.current as any).getCoords(
-            d.latitude,
-            d.longitude,
-            0.1,
-          );
-          if (coords) {
-            obj.position.set(coords.x, coords.y, coords.z);
-            // Make the object point outward from the globe center
-            obj.lookAt(0, 0, 0);
-            obj.rotateX(Math.PI / 2);
-          }
-        }
-      } catch (error) {
-        console.error("Error updating object:", error);
-      }
-    },
-    [],
-  );
+    };
+  }, [isMounted, pointData]);
 
   const getStyles = (isMobile: boolean) =>
     ({
@@ -652,106 +481,25 @@ function VisitorMap() {
   };
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div style={styles.title}>ElectricSQL Live Visitors Map</div>
-      {visitors.length > 0 && (
-        <div style={styles.visitorCount}>
-          {visitors.length.toLocaleString()} visitor
-          {visitors.length !== 1 ? "s" : ""}
-        </div>
-      )}
+    <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
+      <div ref={globeRef} style={{ width: '100%', height: '100%' }} />
       <RecentVisitors visitors={visitors} />
-      <div
-        dangerouslySetInnerHTML={{ __html: tooltipContent }}
-        style={tooltipStyle as any}
-      />
-      <React.Suspense fallback={<div>Loading globe visualization...</div>}>
-        <Globe
-          ref={globeRef}
-          onGlobeReady={() =>
-            globeRef.current?.pointOfView({ lng: -90, lat: 30 })
-          }
-          globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
-          bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-          customLayerData={pointData}
-          customThreeObject={customRender}
-          customThreeObjectUpdate={customThreeObjectUpdate}
-          onCustomLayerHover={(obj: any) => {
-            if (obj && (obj as any).__onHover) {
-              (obj as any).__onHover(true);
-            } else {
-              // Find and unhover any previously hovered objects
-              const globe = globeRef.current;
-              if (globe) {
-                const scene = (globe as any).scene();
-                scene.traverse((object: any) => {
-                  if (object.__onHover) {
-                    object.__onHover(false);
-                  }
-                });
-              }
-            }
-          }}
-          onCustomLayerClick={(obj: any, event: any) => {
-            console.log("Clicked object:", obj);
-            setSelectedCluster(obj.cluster);
-          }}
-          atmosphereColor="#001133"
-          atmosphereAltitude={0.25}
-          backgroundColor="#000000"
-        />
-      </React.Suspense>
-      {selectedCluster && (
+      {showTooltip && (
         <div
+          dangerouslySetInnerHTML={{ __html: tooltipContent }}
           style={{
-            position: "absolute",
-            top: "20px",
-            left: "20px",
-            background: "rgba(0,0,0,0.8)",
-            padding: "20px",
-            borderRadius: "10px",
-            color: "#ffffff",
-            backdropFilter: "blur(10px)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "0 0 20px rgba(255,255,255,0.1)",
-            maxWidth: "300px",
+            position: 'absolute',
+            left: `${tooltipPosition.x + 10}px`,
+            top: `${tooltipPosition.y + 10}px`,
+            background: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '5px 10px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            pointerEvents: 'none',
             zIndex: 1000,
           }}
-        >
-          <h3
-            style={{
-              margin: "0 0 15px 0",
-              color: "#ffffff",
-              textShadow: "0 0 10px rgba(255,255,255,0.5)",
-              fontSize: "16px",
-              fontWeight: "normal",
-            }}
-          >
-            {Array.from(
-              new Set(selectedCluster.visitors.map((v) => v.city)),
-            ).join(", ")}
-          </h3>
-          <p style={{ margin: "5px 0", fontSize: "14px" }}>
-            {selectedCluster.visitors.length} visit
-            {selectedCluster.visitors.length !== 1 ? "s" : ""}
-          </p>
-          <button
-            onClick={() => setSelectedCluster(null)}
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(255,255,255,0.2)",
-              color: "#ffffff",
-              padding: "6px 12px",
-              borderRadius: "4px",
-              cursor: "pointer",
-              marginTop: "10px",
-              fontSize: "12px",
-              transition: "all 0.2s ease",
-            }}
-          >
-            Close
-          </button>
-        </div>
+        />
       )}
     </div>
   );
