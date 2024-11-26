@@ -395,38 +395,42 @@ function VisitorMap() {
     };
   }, [isMounted, pointData]);
 
-  const getStyles = (isMobile: boolean) =>
-    ({
-      title: {
-        position: "absolute",
-        top: isMobile ? "15px" : "20px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        color: "#fff",
-        fontSize: isMobile ? "16px" : "24px",
-        fontWeight: 500,
-        textAlign: "center",
-        zIndex: 1000,
-        textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
-        letterSpacing: "1px",
-      },
-      visitorCount: {
-        position: "absolute",
-        bottom: isMobile ? "15px" : "20px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        color: "#fff",
-        fontSize: isMobile ? "14px" : "16px",
-        textAlign: "center",
-        zIndex: 1000,
-        textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
-        background: "rgba(255, 255, 255, 0.05)",
-        padding: isMobile ? "6px 12px" : "8px 16px",
-        borderRadius: "20px",
-        border: "1px solid rgba(255, 255, 255, 0.1)",
-        backdropFilter: "blur(5px)",
-      },
-    }) as const;
+  const getStyles = (isMobile: boolean) => ({
+    container: {
+      position: 'relative' as const,
+      width: '100%',
+      height: '100%',
+    },
+    title: {
+      position: 'absolute' as const,
+      top: '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      color: 'white',
+      fontSize: isMobile ? '1.2rem' : '1.8rem',
+      fontWeight: 'bold',
+      textAlign: 'center' as const,
+      background: 'rgba(0, 0, 0, 0.75)',
+      padding: '8px 16px',
+      borderRadius: '4px',
+      zIndex: 1000,
+      whiteSpace: 'nowrap' as const,
+    },
+    visitorCount: {
+      position: 'absolute' as const,
+      bottom: '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      color: 'white',
+      fontSize: isMobile ? '1rem' : '1.4rem',
+      textAlign: 'center' as const,
+      background: 'rgba(0, 0, 0, 0.75)',
+      padding: '8px 16px',
+      borderRadius: '4px',
+      zIndex: 1000,
+      whiteSpace: 'nowrap' as const,
+    },
+  }) as const;
 
   if (!isMounted) {
     return <div>Loading globe...</div>;
@@ -463,8 +467,18 @@ function VisitorMap() {
   };
 
   return (
-    <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
-      <div ref={globeRef} style={{ width: '100%', height: '100%' }} />
+    <div style={styles.container}>
+      <div style={styles.title}>ElectricSQL Live Visitor Map</div>
+      <div style={styles.visitorCount}>
+        {visitors.length} Total Visitor{visitors.length !== 1 ? 's' : ''}
+      </div>
+      <div
+        ref={globeRef}
+        style={{
+          width: '100%',
+          height: '100%',
+        }}
+      />
       <RecentVisitors visitors={visitors} />
       {showTooltip && (
         <div
