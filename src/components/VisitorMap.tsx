@@ -262,53 +262,6 @@ function VisitorMap() {
     });
   }, [visitors]); // Logs visitors data changes for debugging
 
-  // Setup Three.js animation loop and scene configuration
-  useEffect(() => {
-    // Store animation frame ID for cleanup
-    let animationFrameId: number;
-
-    // Animation loop function that updates TWEEN animations
-    const animate = () => {
-      // Request next frame and update all active TWEEN animations
-      animationFrameId = requestAnimationFrame(animate);
-      TWEEN.update();
-    };
-
-    if (isMounted && globeRef.current) {
-      // Start animation loop
-      animate();
-
-      // Configure globe controls
-      const controls = (globeRef.current as any).controls();
-      controls.autoRotate = true; // Enable automatic rotation
-      controls.autoRotateSpeed = 0.5; // Set rotation speed (degrees per second)
-
-      // Get reference to the Three.js scene
-      const globe = (globeRef.current as any).scene();
-
-      // Add fog for depth perception
-      // Parameters: color, near distance (when fog starts), far distance (when fog is fully opaque)
-      globe.fog = new Fog("#000000", 400, 2000);
-
-      // Add ambient light for overall scene illumination
-      // Parameters: color, intensity (0-1)
-      const ambientLight = new AmbientLight("#ffffff", 0.8);
-      globe.add(ambientLight);
-
-      // Add directional light for shadows and depth
-      // Parameters: color, intensity (0-1)
-      const dirLight = new DirectionalLight("#ffffff", 1);
-      dirLight.position.set(1, 1, 1); // Position light at 45-degree angle
-      globe.add(dirLight);
-    }
-
-    // Cleanup function to prevent memory leaks
-    return () => {
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [isMounted]); // Sets up Three.js animation loop and scene configuration on mount
 
   // Memoized data transformations
   const clusters = useMemo(() => {
@@ -364,6 +317,8 @@ function VisitorMap() {
         .pointAltitude(d => Math.min(0.8, Math.max(0.01, d.visit_count / 50)))
         .pointRadius(0.3)
         .pointColor(() => '#ff6090')
+        .pointResolution(64)    // Increase point resolution
+        .pointsMerge(false)     // Don't merge points into one geometry
         .pointLabel(d => `
           <div style="text-align: center; color: white; background: rgba(0, 0, 0, 0.75); padding: 10px; border-radius: 5px;">
             <div>${(d as typeof pointData[0]).city}, ${(d as typeof pointData[0]).country}</div>
@@ -376,8 +331,8 @@ function VisitorMap() {
         .polygonSideColor(() => '#2a2469')
         .polygonStrokeColor(() => '#1a1657')
         .polygonAltitude(0.01)
-        // Show latitude/longitude grid lines
-        .showGraticules(true);
+      // Show latitude/longitude grid lines
+      // .showGraticules(true);
 
       // Configure globe controls
       const controls = world.controls();
