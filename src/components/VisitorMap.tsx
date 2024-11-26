@@ -152,7 +152,7 @@ function createClusters(visitors: Visitor[], zoomLevel: number): Cluster[] {
 
 function getVisitorId(): string {
   let id = localStorage.getItem("visitorId");
-  if (!id) {
+  if (!id || id === ``) {
     id = uuidv4();
     localStorage.setItem("visitorId", id);
   }
@@ -161,28 +161,131 @@ function getVisitorId(): string {
 
 function VisitorMap() {
   // Ref to the globe instance for direct manipulation
-  const globeRef = useRef<any>(null);
+  const globeRef = useRef<HTMLDivElement>(null);
+  const globeInstanceRef = useRef<any>(null);
 
   // Basic component state
   const [isMounted, setIsMounted] = useState(false); // Tracks whether the component has finished mounting
-  const [visitorId, setVisitorId] = useState(""); // Stores the unique visitor ID
+  const [visitorId, setVisitorId] = useState(undefined); // Stores the unique visitor ID
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null); // Stores the currently selected cluster
   const [tooltipContent, setTooltipContent] = useState(""); // Stores the content of the tooltip
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 }); // Stores the position of the tooltip
   const [showTooltip, setShowTooltip] = useState(false); // Tracks whether the tooltip should be shown
   const [isMobile, setIsMobile] = useState(false); // Tracks whether the device is mobile
-  const [zoomLevel, setZoomLevel] = useState(1); // Stores the current zoom level
+  const [zoomLevel, setZoomLevel] = useState(1); // Tracks the current zoom level
+  const [globeInitialized, setGlobeInitialized] = useState(false); // Tracks when globe is fully initialized
 
   // Fetch visitors data from the API
   const { data: visitors = [], isLoading } = useShape<Visitor>({
     url: `${import.meta.env.PUBLIC_API_URL}/api/visitors/shape`,
   }); // Fetches visitor data from the API
 
-  // Initialize component and set visitor ID on mount
+  // Memoized data transformations
+  const clusters = useMemo(() => {
+    console.log("Creating clusters from visitors:", visitors);
+    return createClusters(visitors, zoomLevel);
+  }, [visitors, zoomLevel]);
+
+  const pointData = useMemo(() => {
+    console.log("Recalculating point data");
+    return clusters.map((cluster) => ({
+      latitude: cluster.latitude,
+      longitude: cluster.longitude,
+      visit_count: cluster.totalVisits,
+      city: cluster.visitors[0]?.city || 'Unknown City',
+      country: cluster.visitors[0]?.country || 'Unknown Country',
+      totalVisitors: cluster.visitors.length,
+    }));
+  }, [clusters]);
+
+  // Initialize mounted state and visitor id
   useEffect(() => {
     setIsMounted(true);
-    setVisitorId(getVisitorId());
-  }, []); // Runs once on component mount to initialize state
+    setVisitorId(getVisitorId())
+  }, []);
+
+  // Initialize the globe
+  useEffect(() => {
+    if (!isMounted || !globeRef.current) return;
+
+    Promise.all([
+      import('globe.gl'),
+      import('three')
+    ]).then(([GlobeModule, THREE]) => {
+      const Globe = GlobeModule.default;
+      const world = Globe({
+        animateIn: true,
+        rendererConfig: {
+          antialias: true,
+          alpha: true
+        }
+      })(globeRef.current);
+
+      // Store the Globe instance for updates
+      globeInstanceRef.current = world;
+
+      world
+        // Set the globe height to fill the window
+        .height(window.innerHeight)
+        // Set transparent background
+        .backgroundColor('rgba(255, 255, 255, 0)')
+        // Configure the globe's material and appearance
+        .globeMaterial(
+          new THREE.MeshPhongMaterial({
+            color: '#120f30',  // Dark blue color for the globe
+            opacity: 0.7,      // Slightly transparent
+            transparent: true,
+          })
+        )
+        // Configure country polygons
+        .polygonsData(countryFeatures.features)
+        .polygonCapColor(() => '#2a2469')
+        .polygonSideColor(() => '#2a2469')
+        .polygonStrokeColor(() => '#1a1657')
+        .polygonAltitude(0.01)
+
+      // Configure globe controls
+      const controls = world.controls();
+      controls.autoRotate = true;          // Enable automatic rotation
+      controls.enableZoom = false;         // Disable zooming
+      controls.autoRotateSpeed = 0.2;      // Set rotation speed
+
+      // Mark globe as initialized after all setup is complete
+      setGlobeInitialized(true);
+    }).then(() => {
+    });
+
+    return () => {
+      if (globeRef.current) {
+        while (globeRef.current.firstChild) {
+          globeRef.current.removeChild(globeRef.current.firstChild);
+        }
+        globeInstanceRef.current = null;
+      }
+    };
+  }, [isMounted, globeRef.current]);
+
+  // Update points data separately
+  useEffect(() => {
+    if (!globeInstanceRef.current || !pointData || !globeInitialized) return;
+    globeInstanceRef.current
+      .pointsData(pointData)
+      .pointLat(d => Number(d.latitude))
+      .pointLng(d => Number(d.longitude))
+      .pointAltitude(d => Math.min(0.8, Math.max(0.01, d.visit_count / 50)))
+      .pointRadius(0.3)
+      .pointColor(() => '#ff6090')
+      .pointResolution(64)
+      .pointsMerge(false)
+      .pointsTransitionDuration(0)
+      .enablePointerInteraction(true)
+      .pointLabel(d => `
+        <div style="text-align: center; color: white; background: rgba(0, 0, 0, 0.75); padding: 10px; border-radius: 5px;">
+          <div>${(d as typeof pointData[0]).city}, ${(d as typeof pointData[0]).country}</div>
+          <div>${(d as typeof pointData[0]).totalVisitors} visitor${(d as typeof pointData[0]).totalVisitors !== 1 ? 's' : ''}</div>
+        </div>
+      `);
+  }, [pointData, globeInstanceRef.current, globeInitialized]);
 
   // Handle responsive layout changes
   useEffect(() => {
@@ -261,94 +364,6 @@ function VisitorMap() {
       })),
     });
   }, [visitors]); // Logs visitors data changes for debugging
-
-
-  // Memoized data transformations
-  const clusters = useMemo(() => {
-    console.log("Creating clusters from visitors:", visitors);
-    return createClusters(visitors, zoomLevel);
-  }, [visitors, zoomLevel]);
-
-  const pointData = useMemo(() => {
-    console.log("Recalculating point data");
-    return clusters.map((cluster) => ({
-      latitude: cluster.latitude,
-      longitude: cluster.longitude,
-      visit_count: cluster.totalVisits,
-      city: cluster.visitors[0]?.city || 'Unknown City',
-      country: cluster.visitors[0]?.country || 'Unknown Country',
-      totalVisitors: cluster.visitors.length,
-    }));
-  }, [clusters]);
-
-  useEffect(() => {
-    if (!isMounted || !globeRef.current) return;
-
-    Promise.all([
-      import('globe.gl'),
-      import('three')
-    ]).then(([GlobeModule, THREE]) => {
-      const Globe = GlobeModule.default;
-      const world = Globe({
-        animateIn: true,
-        rendererConfig: {
-          antialias: true,
-          alpha: true
-        }
-      })(globeRef.current);
-
-      world
-        // Set the globe height to fill the window
-        .height(window.innerHeight)
-        // Set transparent background
-        .backgroundColor('rgba(255, 255, 255, 0)')
-        // Configure the globe's material and appearance
-        .globeMaterial(
-          new THREE.MeshPhongMaterial({
-            color: '#120f30',  // Dark blue color for the globe
-            opacity: 0.7,      // Slightly transparent
-            transparent: true,
-          })
-        )
-        // Add visitor location data points to the globe
-        .pointsData(pointData)
-        .pointLat(d => Number(d.latitude))
-        .pointLng(d => Number(d.longitude))
-        .pointAltitude(d => Math.min(0.8, Math.max(0.01, d.visit_count / 50)))
-        .pointRadius(0.3)
-        .pointColor(() => '#ff6090')
-        .pointResolution(64)    // Increase point resolution
-        .pointsMerge(false)     // Don't merge points into one geometry
-        .pointLabel(d => `
-          <div style="text-align: center; color: white; background: rgba(0, 0, 0, 0.75); padding: 10px; border-radius: 5px;">
-            <div>${(d as typeof pointData[0]).city}, ${(d as typeof pointData[0]).country}</div>
-            <div>${(d as typeof pointData[0]).totalVisitors} visitor${(d as typeof pointData[0]).totalVisitors !== 1 ? 's' : ''}</div>
-          </div>
-        `)
-        // Configure country polygons
-        .polygonsData(countryFeatures.features)
-        .polygonCapColor(() => '#2a2469')
-        .polygonSideColor(() => '#2a2469')
-        .polygonStrokeColor(() => '#1a1657')
-        .polygonAltitude(0.01)
-      // Show latitude/longitude grid lines
-      // .showGraticules(true);
-
-      // Configure globe controls
-      const controls = world.controls();
-      controls.autoRotate = true;          // Enable automatic rotation
-      controls.enableZoom = false;         // Disable zooming
-      controls.autoRotateSpeed = 0.2;      // Set rotation speed
-    });
-
-    return () => {
-      if (globeRef.current) {
-        while (globeRef.current.firstChild) {
-          globeRef.current.removeChild(globeRef.current.firstChild);
-        }
-      }
-    };
-  }, [isMounted, pointData]);
 
   const getStyles = (isMobile: boolean) => ({
     container: {
