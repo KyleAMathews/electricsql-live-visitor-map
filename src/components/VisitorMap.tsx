@@ -322,6 +322,9 @@ function VisitorMap() {
       latitude: cluster.latitude,
       longitude: cluster.longitude,
       visit_count: cluster.totalVisits,
+      city: cluster.visitors[0]?.city || 'Unknown City',
+      country: cluster.visitors[0]?.country || 'Unknown Country',
+      totalVisitors: cluster.visitors.length,
     }));
   }, [clusters]);
 
@@ -361,6 +364,12 @@ function VisitorMap() {
         .pointAltitude(d => Math.min(0.8, Math.max(0.01, d.visit_count / 50)))
         .pointRadius(0.3)
         .pointColor(() => '#ff6090')
+        .pointLabel(d => `
+          <div style="text-align: center; color: white; background: rgba(0, 0, 0, 0.75); padding: 10px; border-radius: 5px;">
+            <div>${(d as typeof pointData[0]).city}, ${(d as typeof pointData[0]).country}</div>
+            <div>${(d as typeof pointData[0]).totalVisitors} visitor${(d as typeof pointData[0]).totalVisitors !== 1 ? 's' : ''}</div>
+          </div>
+        `)
         // Configure country polygons
         .polygonsData(countryFeatures.features)
         .polygonCapColor(() => '#2a2469')
@@ -374,7 +383,7 @@ function VisitorMap() {
       const controls = world.controls();
       controls.autoRotate = true;          // Enable automatic rotation
       controls.enableZoom = false;         // Disable zooming
-      controls.autoRotateSpeed = 0.5;      // Set rotation speed
+      controls.autoRotateSpeed = 0.2;      // Set rotation speed
     });
 
     return () => {
