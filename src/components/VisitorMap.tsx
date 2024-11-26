@@ -11,26 +11,25 @@ import * as TWEEN from "@tweenjs/tween.js";
 import "../styles/animations.css";
 import RecentVisitors from "./RecentVisitors";
 import {
-  Group,
-  ConeGeometry,
-  MeshPhongMaterial,
-  Mesh,
-  PointLight,
-  Color,
-  DoubleSide,
   AmbientLight,
   DirectionalLight,
   Fog,
 } from "three";
-import type { Object3D } from "three";
 import { feature } from "topojson-client";
+import type { Topology, GeometryCollection } from "topojson-specification";
+import type { FeatureCollection } from 'geojson';
 import countries from "world-atlas/countries-110m.json";
 
-// Convert TopoJSON to GeoJSON
-const countryFeatures = feature(countries, countries.objects.countries);
+// Type the countries data and convert TopoJSON to GeoJSON
+const typedCountries = countries as unknown as Topology<{
+  countries: GeometryCollection;
+  land: GeometryCollection;
+}>;
 
-// Dynamically import Globe
-const Globe = React.lazy(() => import("react-globe.gl"));
+const countryFeatures = feature(
+  typedCountries,
+  typedCountries.objects.countries
+) as FeatureCollection;
 
 type Visitor = {
   id: string;
