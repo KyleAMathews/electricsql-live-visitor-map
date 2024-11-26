@@ -1,23 +1,31 @@
 # Visitor Map
 
-A real-time visitor tracking and visualization application built with Astro, React, and SST. The application displays visitor locations on an interactive world map, with features for clustering and zooming.
+A real-time visitor tracking and visualization application powered by ElectricSQL's bulletproof sync. Why fetch visitor data when you can sync? This application displays visitor locations on an interactive world map.
+
+## ⚡ Why ElectricSQL?
+
+This application demonstrates the power of ElectricSQL's sync-first approach:
+
+- **No Manual Data Fetching**: Replace traditional API calls with automatic data synchronization
+- **Real-Time Updates**: Get instant visitor updates with automated cache invalidation
+- **Offline Resilience**: Keep your app working even when the network isn't
+- **Simplified Stack**: Reduce complexity by eliminating manual data fetching and caching logic
 
 ## 🌟 Features
 
 - Real-time visitor tracking and visualization
 - Interactive world map using react-simple-maps
-- Automatic visitor clustering based on zoom level
-- Responsive design with Tailwind CSS
-- Serverless infrastructure using SST and AWS
-- PostgreSQL database for visitor data storage
+- Automatic visitor clustering
+- Serverless infrastructure using SST and AWS and Cloudflare
+- PostgreSQL database with ElectricSQL sync
 
 ## 🛠️ Tech Stack
 
+- **Data Sync:** ElectricSQL (★ 6.5k on GitHub)
 - **Framework:** Astro + React
-- **Styling:** Tailwind CSS
-- **Maps:** react-simple-maps
-- **Database:** PostgreSQL with ElectricSQL
-- **Infrastructure:** SST (Serverless Stack) on AWS
+- **Maps:** react-globe & three.js
+- **Database:** PostgreSQL (Neon)
+- **Infrastructure:** SST on AWS and Cloudflare
 - **Language:** TypeScript
 
 ## 🚀 Getting Started
@@ -69,9 +77,10 @@ A real-time visitor tracking and visualization application built with Astro, Rea
 
 ## 💡 Development Notes
 
-- The map component uses dynamic clustering based on zoom level for better performance with large datasets
-- Visitor data is updated in real-time using ElectricSQL
-- The application is deployed using SST's serverless infrastructure
+- Leverages ElectricSQL's sync capabilities for real-time visitor updates
+- No need for manual data fetching or cache invalidation
+- Works offline by design thanks to ElectricSQL's sync architecture
+- Deployed using SST's infra-as-code toolkit.
 
 ## 🔧 Configuration
 
