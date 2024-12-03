@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as TWEEN from "@tweenjs/tween.js";
 import "../styles/animations.css";
 import RecentVisitors from "./RecentVisitors";
+import { Modal } from "./Modal";
 import {
   AmbientLight,
   DirectionalLight,
@@ -174,6 +175,7 @@ function VisitorMap() {
   const [isMobile, setIsMobile] = useState(false); // Tracks whether the device is mobile
   const [zoomLevel, setZoomLevel] = useState(1); // Tracks the current zoom level
   const [globeInitialized, setGlobeInitialized] = useState(false); // Tracks when globe is fully initialized
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
   // Fetch visitors data from the API
   const { data: visitors = [], isLoading } = useShape<Visitor>({
@@ -206,12 +208,14 @@ function VisitorMap() {
 
   // Initialize the globe
   useEffect(() => {
+    console.log('Globe initialization attempt:', { isMounted, hasGlobeRef: !!globeRef.current });
     if (!isMounted || !globeRef.current) return;
 
     Promise.all([
       import('globe.gl'),
       import('three')
     ]).then(([GlobeModule, THREE]) => {
+      console.log('Successfully imported globe.gl and three.js');
       const Globe = GlobeModule.default;
       const world = Globe({
         animateIn: true,
@@ -252,7 +256,9 @@ function VisitorMap() {
 
       // Mark globe as initialized after all setup is complete
       setGlobeInitialized(true);
-    }).then(() => {
+      console.log('Globe initialization complete');
+    }).catch(error => {
+      console.error('Failed to initialize globe:', error);
     });
 
     return () => {
@@ -267,6 +273,11 @@ function VisitorMap() {
 
   // Update points data separately
   useEffect(() => {
+    console.log('Points update attempt:', {
+      hasGlobeInstance: !!globeInstanceRef.current,
+      hasPointData: !!pointData,
+      isGlobeInitialized: globeInitialized
+    });
     if (!globeInstanceRef.current || !pointData || !globeInitialized) return;
     globeInstanceRef.current
       .pointsData(pointData)
@@ -370,12 +381,20 @@ function VisitorMap() {
       position: 'relative' as const,
       width: '100%',
       height: '100%',
+      minHeight: isMobile ? '100svh' : '100vh',
     },
-    title: {
+    titleContainer: {
       position: 'absolute' as const,
-      top: '20px',
+      top: isMobile ? '10px' : '20px',
       left: '50%',
       transform: 'translateX(-50%)',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      gap: '8px',
+      zIndex: 1000,
+    },
+    title: {
       color: 'white',
       fontSize: isMobile ? '1.2rem' : '1.8rem',
       fontWeight: 'bold',
@@ -383,12 +402,24 @@ function VisitorMap() {
       background: 'rgba(0, 0, 0, 0.75)',
       padding: '8px 16px',
       borderRadius: '4px',
-      zIndex: 1000,
       whiteSpace: 'nowrap' as const,
+    },
+    aboutButton: {
+      color: 'white',
+      background: 'rgba(0, 0, 0, 0.75)',
+      padding: '6px 12px',
+      borderRadius: '4px',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: isMobile ? '0.9rem' : '1rem',
+      transition: 'background-color 0.2s ease',
+      '&:hover': {
+        background: 'rgba(0, 0, 0, 0.85)',
+      },
     },
     visitorCount: {
       position: 'absolute' as const,
-      bottom: '20px',
+      bottom: isMobile ? '10px' : '20px',
       left: '50%',
       transform: 'translateX(-50%)',
       color: 'white',
@@ -399,6 +430,7 @@ function VisitorMap() {
       borderRadius: '4px',
       zIndex: 1000,
       whiteSpace: 'nowrap' as const,
+      maxWidth: '90%',
     },
   }) as const;
 
@@ -438,7 +470,15 @@ function VisitorMap() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.title}>ElectricSQL Live Visitor Map</div>
+      <div style={styles.titleContainer}>
+        <div style={styles.title}>ElectricSQL Live Visitor Map</div>
+        <button
+          style={styles.aboutButton}
+          onClick={() => setIsAboutModalOpen(true)}
+        >
+          About
+        </button>
+      </div>
       <div style={styles.visitorCount}>
         {visitors.length} Total Visitor{visitors.length !== 1 ? 's' : ''}
       </div>
@@ -467,6 +507,47 @@ function VisitorMap() {
           }}
         />
       )}
+      <Modal
+        isOpen={isAboutModalOpen}
+        onClose={() => setIsAboutModalOpen(false)}
+        title="About the ElectricSQL Live Visitor Map"
+      >
+        <p className="mb-4">
+          Welcome to the Live Visitor Map demo for <a
+            href="https://electric-sql.com/">ElectricSQL</a>, a real-time visualization
+          of visitors to the website.
+        </p>
+        <p className="mb-4">
+          ElectricSQL provides seamless real-time data synchronization between Postgres tables
+          and the visualization. You simply define your data structures in Postgres and then start syncing into the app.
+        </p>
+        <p className="mb-4">
+          View the source code on <a href="https://github.com/KyleAMathews/electricsql-live-visitor-map">GitHub</a>.
+        </p>
+        <div className="mb-4">
+          <p>The visitor data is stored in the following Postgres table:</p>
+          <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+            <code className="language-sql">{`CREATE TABLE IF NOT EXISTS visitors (
+  id UUID PRIMARY KEY,
+  latitude DECIMAL,
+  longitude DECIMAL,
+  last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  visitor_id UUID,
+  country TEXT,
+  city TEXT,
+  visit_count INTEGER DEFAULT 1
+);`}</code>
+          </pre>
+          <p>And loaded with the <a href="https://electric-sql.com/docs/integrations/react"><code>useShape</code></a> hook:</p>
+          <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+            <code className="language-sql">{`const { data: visitors } = useShape<Visitor>({
+  url,
+  table: 'visitors'
+});`}</code>
+          </pre>
+          <p>That's all you need for real-time syncing from Postgres that scales to millions of visitors!</p>
+        </div>
+      </Modal>
     </div>
   );
 }
